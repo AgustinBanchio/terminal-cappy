@@ -102,8 +102,9 @@ func main() {
 	g.set(g.solid, 146, 18, 'S')
 
 	// --- west: the ruins + Dimi's chamber ----------------------------------
-	// Broken structures along the sunken shelf.
-	for _, gx := range []int{54, 78, 96, 110} {
+	// Broken structures along the sunken shelf, clear of the shaft at
+	// x96 so nothing overhangs the way down.
+	for _, gx := range []int{54, 70, 86, 110} {
 		base := groundRow(gx)
 		g.rect(g.solid, gx, base-5, gx+1, base-1, '%')
 		g.rect(g.solid, gx+8, base-4, gx+9, base-1, '%')
@@ -129,11 +130,17 @@ func main() {
 	}
 
 	// --- surface shafts down -----------------------------------------------
+	// Open wells, four tiles wide: an unobstructed drop going down and a
+	// comfortable wall-jump chimney coming back up. The mouth opens from
+	// the highest ground across the shaft so no lip juts into it.
 	shaft := func(x0, depth int) {
-		g.rect(g.solid, x0, groundRow(x0), x0+3, depth, '.')
-		for y, side := groundRow(x0)+4, 0; y < depth-1; y, side = y+3, 1-side {
-			g.rect(g.solid, x0+side*2, y, x0+1+side*2, y, '#')
+		top := H
+		for x := x0; x < x0+4; x++ {
+			if gr := groundRow(x); gr < top {
+				top = gr
+			}
 		}
+		g.rect(g.solid, x0, top, x0+3, depth, '.')
 	}
 	shaft(96, 30)
 	shaft(186, 30)

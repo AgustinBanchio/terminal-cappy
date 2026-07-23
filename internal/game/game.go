@@ -544,7 +544,9 @@ func (g *Game) drawHUD() {
 }
 
 // drawRain streaks world-locked rain down surface-zone columns, in
-// front of the scenery.
+// front of the scenery. The streak pattern lives at (world y - phase),
+// so on screen it moves downward as the phase grows; the modulo must
+// stay positive once the phase overtakes the world coordinate.
 func (g *Game) drawRain(zone func(int) byte, camX, camY int) {
 	c := g.canvas
 	ph := int(g.time * 130)
@@ -554,8 +556,8 @@ func (g *Game) drawRain(zone func(int) byte, camX, camY int) {
 		}
 		wx := sx + camX
 		for sy := 0; sy < c.H; sy++ {
-			wy := sy + camY + ph
-			if wy%12 < 5 && hash2(wx, fdiv(wy, 12))%17 == 0 {
+			wy := sy + camY - ph
+			if ((wy%12)+12)%12 < 5 && hash2(wx, fdiv(wy, 12))%17 == 0 {
 				c.Set(sx, sy, 67)
 			}
 		}
