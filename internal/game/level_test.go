@@ -42,6 +42,17 @@ func TestEmbeddedLevelIsPlayable(t *testing.T) {
 	}
 }
 
+func TestEmbeddedLevelTraversal(t *testing.T) {
+	// The movement-model analysis must stay clean: every part, boss and
+	// the ship reachable from spawn, and no reachable spot without a
+	// way back. Guards hand edits to level1.txt as well as genmap.
+	if issues := LoadDefault().AnalyzeTraversal(); len(issues) > 0 {
+		for _, s := range issues {
+			t.Error(s)
+		}
+	}
+}
+
 func TestLevelRoundTrip(t *testing.T) {
 	l := LoadDefault()
 	data := l.Marshal()

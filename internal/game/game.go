@@ -52,6 +52,11 @@ type Game struct {
 	activeBoss *Boss
 	bossTitleT float64
 
+	// Exploration map: tiles that have been on screen. The map overlay
+	// only reveals what Cappy has actually seen.
+	seen    []bool
+	showMap bool
+
 	partsGot, partsTotal int
 
 	// Weather (surface zone): rain comes and goes; lightning whites
@@ -118,6 +123,8 @@ func (g *Game) reset() {
 
 	g.time, g.shake, g.lift, g.deadT = 0, 0, 0, 0
 	g.raining, g.rainT, g.boltT, g.flashT = false, 14, 0, 0
+	g.seen = make([]bool, g.level.W*g.level.H)
+	g.showMap = false
 	g.msg, g.msgT = "", 0
 	g.state = StatePlaying
 	g.cam.Center(g.player.X, g.player.Y,
@@ -203,6 +210,14 @@ func (g *Game) handleEvent(ev tcell.Event) (quit bool) {
 				} else if g.state == StatePaused {
 					g.state = StatePlaying
 				}
+			case 'm':
+				if g.state == StatePlaying || g.state == StatePaused {
+					g.showMap = !g.showMap
+				}
+			}
+		case tcell.KeyTab:
+			if g.state == StatePlaying || g.state == StatePaused {
+				g.showMap = !g.showMap
 			}
 		}
 		// The title screen starts on any key that is not a quit key.
@@ -219,6 +234,9 @@ func (g *Game) step(dt float64) {
 	g.time += dt
 	switch g.state {
 	case StatePlaying:
+		if g.showMap {
+			break // studying the map freezes the world, like pausing
+		}
 		g.updateWorld(dt)
 	case StateTitle:
 		// Keep the crash site smouldering behind the logo.
@@ -282,6 +300,7 @@ func (g *Game) updateWorld(dt float64) {
 
 	g.crashSmoke(dt)
 	g.updateParticles(dt)
+	g.markSeen()
 
 	g.cam.Update(p.X, p.Y, playerW, playerH,
 		float64(g.canvas.W), float64(g.canvas.H),
@@ -472,9 +491,16 @@ func (g *Game) draw() {
 		g.drawDialogue()
 		g.drawHUD()
 		g.drawBossHUD()
+		if g.showMap {
+			g.drawMap()
+		}
 	case StatePaused:
 		g.drawHUD()
-		g.panel([]string{"PAUSED", "press P to resume"}, 220)
+		if g.showMap {
+			g.drawMap()
+		} else {
+			g.panel([]string{"PAUSED", "press P to resume"}, 220)
+		}
 	case StateDead:
 		g.drawHUD()
 		if g.deadT > 0.8 {
@@ -560,6 +586,115 @@ func (g *Game) drawRain(zone func(int) byte, camX, camY int) {
 			if ((wy%12)+12)%12 < 5 && hash2(wx, fdiv(wy, 12))%17 == 0 {
 				c.Set(sx, sy, 67)
 			}
+		}
+	}
+}
+
+// markSeen records every tile currently on screen for the map overlay.
+func (g *Game) markSeen() {
+	l := g.level
+	tx0 := clampInt(fdiv(int(g.cam.X), TilePx), 0, l.W-1)
+	tx1 := clampInt(fdiv(int(g.cam.X)+g.canvas.W, TilePx), 0, l.W-1)
+	ty0 := clampInt(fdiv(int(g.cam.Y), TilePx), 0, l.H-1)
+	ty1 := clampInt(fdiv(int(g.cam.Y)+g.canvas.H, TilePx), 0, l.H-1)
+	for ty := ty0; ty <= ty1; ty++ {
+		for tx := tx0; tx <= tx1; tx++ {
+			g.seen[ty*l.W+tx] = true
+		}
+	}
+}
+
+// drawMap renders the exploration map overlay: one map pixel per block
+// of tiles, showing only blocks Cappy has had on screen. Unexplored
+// regions stay dark.
+func (g *Game) drawMap() {
+	c := g.canvas
+	l := g.level
+
+	scale := 1
+	for l.W/scale > c.W-8 || l.H/scale > c.H-14 {
+		scale++
+	}
+	mw, mh := (l.W+scale-1)/scale, (l.H+scale-1)/scale
+	x0, y0 := (c.W-mw)/2, (c.H-mh)/2
+
+	c.FillRect(x0-3, y0-5, mw+6, mh+9, 16)
+	c.Rect(x0-3, y0-5, mw+6, mh+9, 96)
+
+	for my := 0; my < mh; my++ {
+		for mx := 0; mx < mw; mx++ {
+			c.Set(x0+mx, y0+my, g.mapBlockColor(mx, my, scale))
+		}
+	}
+
+	// Live markers on explored ground: uncollected parts and the ship.
+	blockSeen := func(tx, ty int) bool {
+		return g.seen[clampInt(ty, 0, l.H-1)*l.W+clampInt(tx, 0, l.W-1)]
+	}
+	for _, pk := range g.pickups {
+		tx, ty := int(pk.X)/TilePx, int(pk.Y)/TilePx
+		if pk.Kind == pickupPart && blockSeen(tx, ty) {
+			c.Set(x0+tx/scale, y0+ty/scale, 220)
+		}
+	}
+	if blockSeen(l.ShipX/TilePx+3, l.ShipY/TilePx) {
+		c.Set(x0+(l.ShipX/TilePx+3)/scale, y0+(l.ShipY/TilePx)/scale, 160)
+	}
+	if int(g.time*3)%2 == 0 { // Cappy, blinking
+		px, py := int(g.player.X+playerW/2)/TilePx, int(g.player.Y+playerH/2)/TilePx
+		c.Set(x0+px/scale, y0+py/scale, 231)
+	}
+
+	row := (y0 - 5) / 2
+	g.textCentered(row+1, "MAP", 220)
+	g.textCentered((y0+mh+3)/2, "M/TAB close   white: you   yellow: parts", 245)
+}
+
+// mapBlockColor summarises one scale x scale block of tiles.
+func (g *Game) mapBlockColor(mx, my, scale int) uint8 {
+	l := g.level
+	seen := false
+	var solid byte
+	lava := false
+	zone := byte('s')
+	for ty := my * scale; ty < (my+1)*scale && ty < l.H; ty++ {
+		for tx := mx * scale; tx < (mx+1)*scale && tx < l.W; tx++ {
+			if !g.seen[ty*l.W+tx] {
+				continue
+			}
+			seen = true
+			switch ch := l.Cell(LayerSolid, tx, ty); ch {
+			case '#', '%', 'X':
+				if solid == 0 {
+					solid = ch
+				}
+			case '~':
+				lava = true
+			}
+			zone = l.Zone(tx, ty)
+		}
+	}
+	switch {
+	case !seen:
+		return 233 // unexplored: fog
+	case lava:
+		return 202
+	case solid == '%':
+		return 101
+	case solid == 'X':
+		return 61
+	case solid == '#':
+		return 95
+	default: // open air, tinted by region
+		switch zone {
+		case 'u':
+			return 237
+		case 'k':
+			return 24
+		case 'l':
+			return 52
+		default:
+			return 238
 		}
 	}
 }
@@ -673,7 +808,7 @@ func (g *Game) drawTitle() {
 	if int(g.time*2)%2 == 0 {
 		g.textCentered(rows-5, "PRESS ANY KEY TO CONTINUE", 231)
 	}
-	g.textCentered(rows-3, "arrows/AD move   Z jump   X shoot   ,/. tiny step", 245)
+	g.textCentered(rows-3, "arrows/AD move  Z jump  X shoot  ,/. tiny step  M map", 245)
 	g.textCentered(rows-2, "hold into a wall to slide, Z to wall jump", 245)
 	g.text(1, rows-1, "retro demo", 240)
 	g.text(c.W-13, rows-1, "ESC to quit", 240)

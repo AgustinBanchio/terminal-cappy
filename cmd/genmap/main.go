@@ -75,6 +75,8 @@ func groundRow(x int) int {
 		return 24 - (x-58)/3 // slope back up to the plains
 	case x >= 124 && x <= 158:
 		return 20 // crash site, flat
+	case x >= 294 && x <= 297:
+		return 19 // step up to the lookout
 	case x >= 298 && x <= 312:
 		return 17 // eastern lookout plateau
 	default:
@@ -102,17 +104,21 @@ func main() {
 	g.set(g.solid, 146, 18, 'S')
 
 	// --- west: the ruins + Dimi's chamber ----------------------------------
-	// Broken structures along the sunken shelf, clear of the shaft at
-	// x96 so nothing overhangs the way down.
+	// Broken structures along the sunken shelf: low open-topped tower
+	// pairs (walls 3-4 tall are always escapable with a single jump,
+	// and no lintel means nothing to get trapped under). Clear of the
+	// shaft at x96 so nothing overhangs the way down.
 	for _, gx := range []int{54, 70, 86, 110} {
-		base := groundRow(gx)
-		g.rect(g.solid, gx, base-5, gx+1, base-1, '%')
-		g.rect(g.solid, gx+8, base-4, gx+9, base-1, '%')
-		for x := gx; x <= gx+6; x++ { // broken lintel
-			if hash2(x, 77)%3 != 0 {
-				g.set(g.solid, x, base-6, '%')
+		// Base each tower on the deepest nearby ground so it never
+		// rises more than 3 tiles above either approach side.
+		base := 0
+		for x := gx - 1; x <= gx+10; x++ {
+			if gr := groundRow(x); gr > base {
+				base = gr
 			}
 		}
+		g.rect(g.solid, gx, base-3, gx+1, base-1, '%')
+		g.rect(g.solid, gx+8, base-2, gx+9, base-1, '%')
 		g.rect(g.bg, gx+4, base-3, gx+5, base-1, 'r')
 		g.set(g.bg, gx+11, base-1, 'b')
 		g.set(g.bg, gx-2, base-1, 'b')
@@ -144,7 +150,7 @@ func main() {
 	}
 	shaft(96, 30)
 	shaft(186, 30)
-	shaft(262, 40)
+	shaft(262, 30) // reaches the upper tunnel; go deeper via connectors
 
 	// --- cave tunnels --------------------------------------------------------
 	for x := 14; x <= 300; x++ { // upper tunnel
@@ -159,28 +165,53 @@ func main() {
 	g.rect(g.solid, 56, 35, 59, 40, '.')
 	g.rect(g.solid, 150, 35, 153, 40, '.')
 	g.rect(g.solid, 236, 35, 239, 40, '.')
+	// Rubble mounds under every shaft and connector mouth: the tunnels
+	// are taller than a jump, so a 3-tile hop onto the mound puts the
+	// walls of the chimney above within wall-jump reach.
+	for _, m := range [][2]int{{97, 33}, {187, 33}, {263, 33}} {
+		g.rect(g.solid, m[0], m[1], m[0]+1, 36, '#')
+	}
+	for _, m := range [][2]int{{57, 42}, {151, 42}, {237, 42}} {
+		g.rect(g.solid, m[0], m[1], m[0]+1, 45, '#')
+	}
 	// carved chambers
 	g.rect(g.solid, 62, 32, 80, 38, '.')
 	g.rect(g.solid, 152, 29, 170, 35, '.')
 	g.rect(g.solid, 222, 41, 238, 45, '.')
 
 	// --- crystal region (south-east) ----------------------------------------
+	// The grand cavern is terraced: broad 2-tile steps rise eastward
+	// from the deep floor to the exit shaft and Prisma's door, so any
+	// drop can be walked back up.
 	g.rect(g.zone, 194, 42, W-1, H-1, 'k')
-	g.rect(g.solid, 200, 48, 262, 58, '.') // grand cavern
-	for _, px := range []int{214, 232, 248} {
-		g.rect(g.solid, px, 52, px+1, 58, '#') // remnant pillars
+	terrace := func(x int) int {
+		switch {
+		case x < 215:
+			return 58
+		case x < 231:
+			return 56
+		case x < 247:
+			return 54
+		default:
+			return 52
+		}
 	}
+	for x := 200; x <= 269; x++ {
+		g.rect(g.solid, x, 48, x, terrace(x)-1, '.')
+	}
+	// remnant columns standing on the terraces (short: jump over them)
+	g.rect(g.solid, 218, 53, 219, 55, '#')
+	g.rect(g.solid, 236, 51, 237, 53, '#')
 	g.rect(g.solid, 246, 42, 249, 48, '.') // way in from the lower tunnel
-	// Prisma's chamber
-	g.rect(g.solid, 270, 46, 308, 47, '#') // ceiling
-	g.rect(g.solid, 270, 48, 271, 58, '#') // west wall
-	g.rect(g.solid, 307, 48, 308, 58, '#') // east wall
-	g.rect(g.solid, 272, 48, 306, 57, '.') // interior
-	g.rect(g.solid, 270, 53, 271, 56, 'd')
-	g.rect(g.solid, 262, 52, 269, 56, '.') // approach corridor
-	g.set(g.solid, 289, 54, 'Q')
+	// Prisma's chamber, entered at terrace level
+	g.rect(g.solid, 270, 40, 308, 41, '#') // ceiling
+	g.rect(g.solid, 270, 42, 271, 51, '#') // west wall
+	g.rect(g.solid, 307, 42, 308, 51, '#') // east wall
+	g.rect(g.solid, 272, 42, 306, 51, '.') // interior, floor at 52
+	g.rect(g.solid, 270, 48, 271, 51, 'd')
+	g.set(g.solid, 289, 49, 'Q')
 	// crystal rock conversion
-	for y := 42; y < H; y++ {
+	for y := 38; y < H; y++ {
 		for x := 194; x < W; x++ {
 			if g.get(g.solid, x, y) == '#' {
 				g.set(g.solid, x, y, 'X')
@@ -193,6 +224,12 @@ func main() {
 	g.rect(g.solid, 12, 50, 136, 57, '.') // great burning cavern
 	g.rect(g.solid, 16, 42, 19, 50, '.')  // west way down
 	g.rect(g.solid, 84, 42, 87, 50, '.')  // east way down
+	// Ledge stairs up to each way out: the chimneys open in the cavern
+	// ceiling, so without steps the drop in would be one-way.
+	g.rect(g.solid, 24, 55, 26, 55, '#')
+	g.rect(g.solid, 18, 52, 20, 52, '#')
+	g.rect(g.solid, 79, 55, 81, 55, '#')
+	g.rect(g.solid, 84, 52, 86, 52, '#')
 	// Magmaw's chamber inside the cavern
 	g.rect(g.solid, 28, 48, 74, 49, '#') // ceiling
 	g.rect(g.solid, 28, 50, 29, 57, '#') // west wall
@@ -207,10 +244,13 @@ func main() {
 	}
 
 	// --- ship parts (non-boss) -----------------------------------------------
+	// Four parts are free pickups in far corners (the other three are
+	// boss drops); each free part gets explicit guards below.
 	g.set(g.solid, 305, 15, 'P') // eastern lookout
 	g.set(g.solid, 161, 31, 'P') // upper cave chamber
-	g.set(g.solid, 208, 50, 'P') // crystal cavern
-	g.set(g.solid, 20, 54, 'P')  // lava west pocket
+	g.set(g.solid, 206, 56, 'P') // crystal cavern, deep end
+	g.set(g.solid, 115, 55, 'P') // lava island between pools
+	g.set(g.bg, 22, 54, 'c')     // the west lava pocket keeps a secret glow
 
 	// --- decorations, by zone -------------------------------------------------
 	for y := 0; y < H-1; y++ {
@@ -269,11 +309,13 @@ func main() {
 	}
 
 	// --- enemies: the challenge is combat, not jumps ---------------------------
+	// Walkers only spawn on floors at least 3 tiles wide, so none end
+	// up perched on thin pillars or ruin walls.
 	placeOnFloor := func(kind byte, x0, x1, y0, y1, spacing int) {
 		for x := x0; x <= x1; x += spacing {
 			for y := y0; y <= y1; y++ {
-				if g.get(g.solid, x, y) == '.' && g.solidAt(x, y+1) &&
-					g.get(g.solid, x, y-1) == '.' {
+				if g.get(g.solid, x, y) == '.' && g.get(g.solid, x, y-1) == '.' &&
+					g.solidAt(x, y+1) && g.solidAt(x-1, y+1) && g.solidAt(x+1, y+1) {
 					g.set(g.solid, x, y, kind)
 					break
 				}
@@ -283,13 +325,18 @@ func main() {
 	placeOnFloor('a', 60, 120, 8, 24, 17)   // ruins shelf
 	placeOnFloor('a', 168, 296, 8, 24, 19)  // eastern plains
 	placeOnFloor('a', 20, 296, 29, 45, 23)  // cave tunnels
-	placeOnFloor('a', 202, 260, 48, 58, 22) // crystal cavern
+	placeOnFloor('a', 202, 260, 48, 58, 22) // crystal terraces
 	placeOnFloor('a', 78, 134, 50, 58, 15)  // lava islands
 	for _, f := range [][2]int{
 		{70, 14}, {105, 13}, {180, 13}, {230, 12}, {286, 12}, // surface
-		{70, 34}, {160, 31}, {230, 42}, // cave chambers
-		{210, 51}, {226, 52}, {244, 50}, {256, 53}, // crystal
-		{94, 53}, {118, 52}, // lava
+		{70, 34}, {230, 42}, // cave chambers
+		{212, 54}, {226, 52}, {244, 50}, {256, 48}, // crystal terraces
+		{94, 53}, {22, 53}, // lava
+		// guards for the free ship parts
+		{301, 13}, {309, 13}, // eastern lookout
+		{157, 30}, {165, 30}, // upper cave chamber
+		{203, 53}, {209, 53}, // crystal deep end
+		{112, 52}, {118, 52}, // lava island
 	} {
 		if g.get(g.solid, f[0], f[1]) == '.' {
 			g.set(g.solid, f[0], f[1], 'f')
@@ -318,6 +365,17 @@ func write(g *gridSet) {
 	}
 	if bad := checkConnectivity(lvl); len(bad) > 0 {
 		fmt.Fprintln(os.Stderr, "unreachable from spawn:", bad)
+		os.Exit(1)
+	}
+	if issues := lvl.AnalyzeTraversal(); len(issues) > 0 {
+		fmt.Fprintln(os.Stderr, "traversal problems:")
+		for _, s := range issues {
+			fmt.Fprintln(os.Stderr, " -", s)
+		}
+		if dump := os.Getenv("GENMAP_DEBUG_DUMP"); dump != "" {
+			_ = os.WriteFile(dump, []byte(out), 0o644)
+			fmt.Fprintln(os.Stderr, "debug dump written to", dump)
+		}
 		os.Exit(1)
 	}
 

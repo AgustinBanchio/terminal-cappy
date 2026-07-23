@@ -39,6 +39,7 @@ Flags:
 - Z (or W, Space, Up): jump
 - X (or K): shoot
 - Hold into a wall while airborne: wall slide; Z while sliding: wall jump
+- M or Tab: exploration map (only shows areas you have already seen)
 - P: pause
 - R: restart
 - Esc / Ctrl+C: quit
@@ -118,6 +119,16 @@ ship part when the boss falls.
 `cmd/genmap` regenerates the whole map from the curated layout in
 code. It OVERWRITES hand edits in level1.txt, so it is only for
 restructuring the macro layout; day-to-day design lives in leveled.
+
+Every map (generated or hand-edited) is checked by a traversal
+analyser (`AnalyzeTraversal`): it simulates simplified movement (jump
+height, air drift, unlimited falls, wall-jump chimneys up to 4 tiles
+wide) and fails the build if any part, boss or the ship is
+unreachable, or if any reachable spot has no way back. genmap runs it
+at generation time and `TestEmbeddedLevelTraversal` runs it on every
+`go test`, so a hand edit that creates a stuck room fails CI. When it
+does, the debug harness in `debug_traversal_test.go` prints where the
+reachability frontier is.
 
 ## Architecture
 
