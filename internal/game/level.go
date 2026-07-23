@@ -1,7 +1,11 @@
 package game
 
 import (
+	"bytes"
+	_ "embed"
+	"fmt"
 	"math"
+	"strings"
 
 	"github.com/AgustinBanchio/terminal-cappy/internal/gfx"
 )
@@ -9,23 +13,226 @@ import (
 // TilePx is the size of one collision tile in canvas pixels.
 const TilePx = 4
 
-// chunkRows is the fixed tile height of the world.
-const chunkRows = 24
+// The world is three tile layers stored in a plain-text level file
+// (see level1.txt), edited with cmd/leveled:
+//
+//	solid: collision + entities  '.' air  '#' rock  'S' spawn
+//	       'a' walker  'f' flyer  'P' ship part  'H' ship anchor
+//	bg:    behind gameplay       't' stalactite  'm' stalagmite
+//	       'I' pillar  'c' crystal
+//	fg:    in front of gameplay  'g' grass
+const (
+	LayerSolid = iota
+	LayerBG
+	LayerFG
+	LayerCount
+)
 
-// Spawn is an entity placement scanned out of the map.
+var layerNames = [LayerCount]string{"solid", "bg", "fg"}
+
+// TileOption is one entry of an editor palette.
+type TileOption struct {
+	Ch   byte
+	Name string
+}
+
+var palettes = [LayerCount][]TileOption{
+	{
+		{'#', "rock"},
+		{'.', "air"},
+		{'S', "spawn"},
+		{'a', "walker"},
+		{'f', "flyer"},
+		{'P', "part"},
+		{'H', "ship"},
+	},
+	{
+		{'t', "stalactite"},
+		{'m', "stalagmite"},
+		{'I', "pillar"},
+		{'c', "crystal"},
+		{'.', "none"},
+	},
+	{
+		{'g', "grass"},
+		{'.', "none"},
+	},
+}
+
+// Palette returns the valid tiles for a layer.
+func Palette(layer int) []TileOption { return palettes[layer] }
+
+func validTile(layer int, ch byte) bool {
+	for _, o := range palettes[layer] {
+		if o.Ch == ch {
+			return true
+		}
+	}
+	return false
+}
+
+// Spawn is an entity placement scanned out of the solid layer.
 type Spawn struct {
 	Kind rune // 'a' walker, 'f' flyer, 'P' ship part
 	X, Y float64
 }
 
-// Level is the world: a tile grid plus entity spawns.
+// Level is the world: three tile layers plus state derived from them.
 type Level struct {
-	W, H   int // in tiles
+	W, H int
+	grid [LayerCount][]byte
+
+	// Derived from the solid layer by refresh().
 	tiles  []bool
 	Spawns []Spawn
 
 	SpawnX, SpawnY float64 // player start (pixels)
 	ShipX, ShipY   int     // crashed ship sprite position (pixels)
+}
+
+//go:embed level1.txt
+var defaultLevelData []byte
+
+// LoadDefault parses the level embedded in the binary.
+func LoadDefault() *Level {
+	l, err := ParseLevel(defaultLevelData)
+	if err != nil {
+		panic("embedded level is invalid: " + err.Error())
+	}
+	return l
+}
+
+const levelHeader = "cappy-level v1"
+
+// ParseLevel reads the level text format: a header line, then one
+// "@solid" / "@bg" / "@fg" section each holding H rows of W tiles.
+func ParseLevel(data []byte) (*Level, error) {
+	sections := map[string][]string{}
+	cur := ""
+	sawHeader := false
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" || strings.HasPrefix(line, "//") {
+			continue
+		}
+		if !sawHeader {
+			if line != levelHeader {
+				return nil, fmt.Errorf("bad header %q, want %q", line, levelHeader)
+			}
+			sawHeader = true
+			continue
+		}
+		if strings.HasPrefix(line, "@") {
+			cur = line[1:]
+			continue
+		}
+		if cur == "" {
+			return nil, fmt.Errorf("row outside any @section: %q", line)
+		}
+		sections[cur] = append(sections[cur], line)
+	}
+
+	l := &Level{}
+	for layer, name := range layerNames {
+		rows := sections[name]
+		if len(rows) == 0 {
+			return nil, fmt.Errorf("missing @%s section", name)
+		}
+		if layer == LayerSolid {
+			l.W, l.H = len(rows[0]), len(rows)
+		} else if len(rows) != l.H {
+			return nil, fmt.Errorf("@%s has %d rows, want %d", name, len(rows), l.H)
+		}
+		g := make([]byte, 0, l.W*l.H)
+		for y, row := range rows {
+			if len(row) != l.W {
+				return nil, fmt.Errorf("@%s row %d is %d wide, want %d", name, y, len(row), l.W)
+			}
+			for x := 0; x < l.W; x++ {
+				if !validTile(layer, row[x]) {
+					return nil, fmt.Errorf("@%s row %d col %d: invalid tile %q", name, y, x, row[x])
+				}
+			}
+			g = append(g, row...)
+		}
+		l.grid[layer] = g
+	}
+
+	l.refresh()
+	if l.SpawnX == 0 && l.SpawnY == 0 {
+		return nil, fmt.Errorf("level has no spawn point 'S'")
+	}
+	if l.ShipX == 0 && l.ShipY == 0 {
+		return nil, fmt.Errorf("level has no ship anchor 'H'")
+	}
+	return l, nil
+}
+
+// Marshal serialises the level back to the text format.
+func (l *Level) Marshal() []byte {
+	var b bytes.Buffer
+	b.WriteString(levelHeader + "\n")
+	for layer, name := range layerNames {
+		fmt.Fprintf(&b, "\n@%s\n", name)
+		for y := 0; y < l.H; y++ {
+			b.Write(l.grid[layer][y*l.W : (y+1)*l.W])
+			b.WriteByte('\n')
+		}
+	}
+	return b.Bytes()
+}
+
+// Cell reads one layer tile ('.' when out of bounds).
+func (l *Level) Cell(layer, tx, ty int) byte {
+	if tx < 0 || tx >= l.W || ty < 0 || ty >= l.H {
+		return '.'
+	}
+	return l.grid[layer][ty*l.W+tx]
+}
+
+// SetCell writes one layer tile, refusing invalid tiles for the layer.
+// Placing a second spawn or ship anchor moves it: the old one clears.
+func (l *Level) SetCell(layer, tx, ty int, ch byte) bool {
+	if tx < 0 || tx >= l.W || ty < 0 || ty >= l.H || !validTile(layer, ch) {
+		return false
+	}
+	if layer == LayerSolid && (ch == 'S' || ch == 'H') {
+		for i, c := range l.grid[LayerSolid] {
+			if c == ch {
+				l.grid[LayerSolid][i] = '.'
+			}
+		}
+	}
+	l.grid[layer][ty*l.W+tx] = ch
+	if layer == LayerSolid {
+		l.refresh()
+	}
+	return true
+}
+
+// refresh recomputes collision and entity placements from the solid
+// layer. The ship anchor 'H' marks the sprite's top-left tile, nudged
+// 2px down so the hull sits buried in the ground.
+func (l *Level) refresh() {
+	l.tiles = make([]bool, l.W*l.H)
+	l.Spawns = l.Spawns[:0]
+	for ty := 0; ty < l.H; ty++ {
+		for tx := 0; tx < l.W; tx++ {
+			px := float64(tx*TilePx + TilePx/2)
+			py := float64(ty*TilePx + TilePx/2)
+			switch l.grid[LayerSolid][ty*l.W+tx] {
+			case '#':
+				l.tiles[ty*l.W+tx] = true
+			case 'S':
+				l.SpawnX, l.SpawnY = px, py
+			case 'H':
+				l.ShipX, l.ShipY = tx*TilePx, ty*TilePx+2
+			case 'a', 'f', 'P':
+				k := rune(l.grid[LayerSolid][ty*l.W+tx])
+				l.Spawns = append(l.Spawns, Spawn{Kind: k, X: px, Y: py})
+			}
+		}
+	}
 }
 
 // PxW and PxH are the world size in pixels.
@@ -118,253 +325,133 @@ func (l *Level) Draw(c *gfx.Canvas, camX, camY int) {
 	}
 }
 
-// --- decoration layers --------------------------------------------------
+// --- decoration layers ---------------------------------------------------
 
-// Spike length patterns per pixel column within a tile, so stalactites
+// Spike length offsets per pixel column within a tile, so stalactites
 // and stalagmites come out pointy instead of square.
 var spikeShape = [TilePx]int{-2, 0, -1, -3}
 
-// DrawBackdrop renders non-colliding world-space scenery behind the
-// gameplay layer: stalactites under ceilings, stalagmites and tall rock
-// pillars in caverns. Everything derives deterministically from the
-// tile geometry, so the art always matches the level.
-func (l *Level) DrawBackdrop(c *gfx.Canvas, camX, camY int) {
-	tx0 := fdiv(camX, TilePx) - 1
-	tx1 := fdiv(camX+c.W, TilePx) + 1
-	for tx := tx0; tx <= tx1; tx++ {
-		for ty := 0; ty < l.H; ty++ {
-			solid := l.SolidTile(tx, ty)
-
-			// Ceiling edge: maybe hang a stalactite cluster.
-			if solid && !l.SolidTile(tx, ty+1) {
-				h := hash2(tx, ty)
-				if h%3 != 0 {
-					l.drawSpikes(c, camX, camY, tx, (ty+1)*TilePx, 3+int(h%5), +1, 52)
-				}
-			}
-			// Floor edge: maybe a stalagmite, rarely a full pillar
-			// reaching a ceiling above (cavern support columns).
-			if !solid && l.SolidTile(tx, ty+1) {
-				h := hash2(tx, ty+7777)
-				if h%7 == 0 {
-					l.drawSpikes(c, camX, camY, tx, (ty+1)*TilePx-1, 2+int(h%4), -1, 52)
-				}
-				if h%29 == 0 {
-					if cy, ok := l.ceilingAbove(tx, ty); ok {
-						x := tx*TilePx + 1 - camX
-						y0 := (cy+1)*TilePx - camY
-						c.FillRect(x, y0, 2, (ty+1)*TilePx-(cy+1)*TilePx, 52)
-						c.FillRect(x-1, y0, 1, 2, 52) // flared top
-						c.FillRect(x+2, y0, 1, 2, 52)
-					}
-				}
-			}
-		}
-	}
+func (l *Level) visibleTiles(c *gfx.Canvas, camX int) (int, int) {
+	return fdiv(camX, TilePx) - 1, fdiv(camX+c.W, TilePx) + 1
 }
 
-// ceilingAbove finds a solid ceiling within pillar range above a floor.
-func (l *Level) ceilingAbove(tx, ty int) (int, bool) {
-	for cy := ty - 1; cy >= ty-12 && cy >= 0; cy-- {
-		if l.SolidTile(tx, cy) {
-			return cy, true
+// DrawBackdrop renders the bg layer behind the gameplay layer:
+// stalactites, stalagmites, cavern support pillars and glowing
+// crystals, each placed by hand in the level file. Pixel shapes still
+// come from a position hash so tiles never look stamped.
+func (l *Level) DrawBackdrop(c *gfx.Canvas, camX, camY int, t float64) {
+	tx0, tx1 := l.visibleTiles(c, camX)
+	for tx := tx0; tx <= tx1; tx++ {
+		for ty := 0; ty < l.H; ty++ {
+			switch l.Cell(LayerBG, tx, ty) {
+			case 't':
+				drawSpikes(c, camX, camY, tx, ty*TilePx, 3+int(hash2(tx, ty)%5), +1)
+			case 'm':
+				drawSpikes(c, camX, camY, tx, (ty+1)*TilePx-1, 2+int(hash2(tx, ty)%4), -1)
+			case 'I':
+				l.drawPillar(c, camX, camY, tx, ty)
+			case 'c':
+				l.drawCrystal(c, camX, camY, tx, ty, t)
+			}
 		}
 	}
-	return 0, false
 }
 
 // drawSpikes draws one tile-column of pointy rock. dir +1 hangs down
 // from y0, dir -1 grows up from y0.
-func (l *Level) drawSpikes(c *gfx.Canvas, camX, camY, tx, y0, size, dir int, color uint8) {
+func drawSpikes(c *gfx.Canvas, camX, camY, tx, y0, size, dir int) {
 	for i := 0; i < TilePx; i++ {
 		length := size + spikeShape[(tx+i)%TilePx]
 		wx := tx*TilePx + i
 		for j := 0; j < length; j++ {
-			c.Set(wx-camX, y0+j*dir-camY, color)
+			c.Set(wx-camX, y0+j*dir-camY, 52)
 		}
 	}
 }
 
-// DrawForeground renders scenery in front of the player: sparse tufts
-// of alien grass swaying on every sunlit crust. The tufts are single
-// pixels wide with gaps, so Cappy stays visible walking through them.
+// drawPillar draws one tile-tall pillar segment; paint a vertical run
+// of 'I' tiles for a full floor-to-ceiling column. Ends get flares.
+func (l *Level) drawPillar(c *gfx.Canvas, camX, camY, tx, ty int) {
+	x := tx*TilePx + 1 - camX
+	y := ty*TilePx - camY
+	c.FillRect(x, y, 2, TilePx, 52)
+	if l.Cell(LayerBG, tx, ty-1) != 'I' {
+		c.FillRect(x-1, y, 1, 2, 52)
+		c.FillRect(x+2, y, 1, 2, 52)
+	}
+	if l.Cell(LayerBG, tx, ty+1) != 'I' {
+		c.FillRect(x-1, y+TilePx-2, 1, 2, 52)
+		c.FillRect(x+2, y+TilePx-2, 1, 2, 52)
+	}
+}
+
+// drawCrystal draws a small glowing gem with a slow twinkle.
+func (l *Level) drawCrystal(c *gfx.Canvas, camX, camY, tx, ty int, t float64) {
+	x := tx*TilePx + 1 - camX
+	y := ty*TilePx + 1 - camY
+	c.Set(x+1, y, 97)
+	c.Set(x, y+1, 97)
+	c.Set(x+1, y+1, 183)
+	c.Set(x+2, y+1, 97)
+	c.Set(x+1, y+2, 97)
+	if (int(t*2)+int(hash2(tx, ty)))%5 == 0 {
+		c.Set(x+1, y+1, 231) // shine
+	}
+}
+
+// DrawForeground renders the fg layer in front of the player: sparse
+// tufts of alien grass swaying on 'g' tiles. Blades are single pixels
+// with gaps, so Cappy stays visible walking through them.
 var grassColors = []uint8{29, 35, 41}
 
 func (l *Level) DrawForeground(c *gfx.Canvas, camX, camY int, t float64) {
-	for sx := 0; sx < c.W; sx++ {
-		wx := sx + camX
-		tx := fdiv(wx, TilePx)
-		h := hash2(wx, 0)
-		if h%5 < 2 {
-			continue // gap: this blade is missing, keeping it see-through
-		}
+	tx0, tx1 := l.visibleTiles(c, camX)
+	for tx := tx0; tx <= tx1; tx++ {
 		for ty := 0; ty < l.H; ty++ {
-			if !l.SolidTile(tx, ty) || l.SolidTile(tx, ty-1) {
+			if l.Cell(LayerFG, tx, ty) != 'g' {
 				continue
 			}
-			gh := hash2(wx, ty)
-			if gh%3 == 0 {
-				continue
-			}
-			blade := 2 + int(gh%3)
-			sway := int(math.Round(math.Sin(t*1.8 + float64(wx)*0.7)))
-			col := grassColors[gh%uint32(len(grassColors))]
-			top := ty*TilePx - blade
-			for y := top; y < ty*TilePx; y++ {
-				x := sx
-				if y == top {
-					x += sway // only the tip sways
+			base := (ty + 1) * TilePx // grass grows up from the tile floor
+			for i := 0; i < TilePx; i++ {
+				wx := tx*TilePx + i
+				if hash2(wx, 0)%5 < 2 {
+					continue // gap: keeps the layer see-through
 				}
-				c.Set(x, y-camY, col)
-			}
-		}
-	}
-}
-
-// --- world building -----------------------------------------------------
-
-// chunk is a hand-authored map segment, chunkRows tall. The contract:
-// columns 0-1 and w-2..w-1 have solid floor from row 20 down and open
-// air above, so segments join seamlessly.
-type chunk struct {
-	w    int
-	rows []string
-}
-
-func newChunk(w int) *chunk {
-	c := &chunk{w: w, rows: make([]string, chunkRows)}
-	blank := make([]byte, w)
-	ground := make([]byte, w)
-	for i := 0; i < w; i++ {
-		blank[i] = '.'
-		ground[i] = '#'
-	}
-	for r := 0; r < chunkRows; r++ {
-		if r >= 20 {
-			c.rows[r] = string(ground)
-		} else {
-			c.rows[r] = string(blank)
-		}
-	}
-	return c
-}
-
-func (c *chunk) set(row int, s string) *chunk {
-	if len(s) != c.w {
-		panic("chunk row width mismatch: " + s)
-	}
-	c.rows[row] = s
-	return c
-}
-
-func (c *chunk) setRange(r0, r1 int, s string) *chunk {
-	for r := r0; r <= r1; r++ {
-		c.set(r, s)
-	}
-	return c
-}
-
-// worldChunks returns the curated world, in order: a difficulty ramp
-// from the crash site through caverns and wall-jump climbs to the
-// hardest part high on the twin towers, then back on foot.
-func worldChunks() []*chunk {
-	start := newChunk(20).
-		set(18, "..............S.....")
-
-	meadow := newChunk(16).
-		set(18, "....##..........").
-		set(19, "...####....a....")
-
-	valley := newChunk(16).
-		set(16, "........f.......").
-		set(20, "####........####").
-		set(21, "#####......#####")
-
-	gap := newChunk(16).
-		set(14, "........f.......").
-		set(18, ".....##...##....").
-		setRange(20, 23, "####........####")
-
-	plateau := newChunk(16).
-		set(15, ".......a..a.....").
-		setRange(16, 17, ".....#######....").
-		setRange(18, 19, "...###########..")
-
-	cavern := newChunk(16).
-		setRange(0, 15, "....#########...").
-		set(18, "........P.......").
-		set(19, "......a.........")
-
-	arch := newChunk(16).
-		setRange(10, 11, "...##########...").
-		setRange(12, 16, "...##......##...").
-		set(18, ".......a........")
-
-	chimney := newChunk(16).
-		set(6, ".........##.....").
-		set(7, ".....P...##.....").
-		setRange(8, 16, ".....##..##.....").
-		setRange(17, 19, ".........##.....")
-
-	pits := newChunk(16).
-		set(14, ".....f....f.....").
-		setRange(18, 19, ".......##.......").
-		setRange(20, 23, "####...##...####")
-
-	ruins := newChunk(16).
-		set(14, "..........P.....").
-		set(15, "..........##....").
-		setRange(16, 17, "......##..##....").
-		set(18, "..##..##..##....").
-		set(19, "..##..##..##..a.")
-
-	towers := newChunk(16).
-		set(4, "............##..").
-		set(5, "........P...##..").
-		setRange(6, 16, "........##..##..")
-
-	end := newChunk(12).
-		setRange(0, 19, ".........###").
-		set(12, "....f....###")
-
-	return []*chunk{start, meadow, valley, gap, plateau, cavern,
-		arch, chimney, pits, ruins, towers, end}
-}
-
-// Build assembles the curated world. It is the same planet every run:
-// a metroidvania map, not a roguelike one.
-func Build() *Level {
-	chunks := worldChunks()
-	total := 0
-	for _, c := range chunks {
-		total += c.w
-	}
-
-	l := &Level{W: total, H: chunkRows, tiles: make([]bool, total*chunkRows)}
-
-	xOff := 0
-	for _, c := range chunks {
-		for ty := 0; ty < chunkRows; ty++ {
-			for tx := 0; tx < c.w; tx++ {
-				wx := xOff + tx
-				px := float64(wx*TilePx + TilePx/2)
-				py := float64(ty*TilePx + TilePx/2)
-				switch c.rows[ty][tx] {
-				case '#':
-					l.tiles[ty*l.W+wx] = true
-				case 'S':
-					l.SpawnX, l.SpawnY = px, py
-				case 'a', 'f', 'P':
-					l.Spawns = append(l.Spawns, Spawn{Kind: rune(c.rows[ty][tx]), X: px, Y: py})
+				gh := hash2(wx, ty)
+				blade := 2 + int(gh%3)
+				sway := int(math.Round(math.Sin(t*1.8 + float64(wx)*0.7)))
+				col := grassColors[gh%uint32(len(grassColors))]
+				for y := base - blade; y < base; y++ {
+					x := wx - camX
+					if y == base-blade {
+						x += sway // only the tip sways
+					}
+					c.Set(x, y-camY, col)
 				}
 			}
 		}
-		xOff += c.w
 	}
+}
 
-	// The ship sits near the left edge of the crash site, nose buried
-	// a couple of pixels into the ground (ground top is row 20).
-	l.ShipX = 4
-	l.ShipY = 20*TilePx - sprShip.H + 2
-	return l
+// DrawMarkers visualises the invisible solid-layer entities (spawn,
+// aliens, parts, ship). The game proper never calls this; the editor
+// uses it so placements are visible while editing.
+func (l *Level) DrawMarkers(c *gfx.Canvas, camX, camY int) {
+	for ty := 0; ty < l.H; ty++ {
+		for tx := 0; tx < l.W; tx++ {
+			x, y := tx*TilePx-camX, ty*TilePx-camY
+			switch l.grid[LayerSolid][ty*l.W+tx] {
+			case 'S':
+				c.Blit(sprCappyIdle.R, x-3, y-8)
+			case 'a':
+				c.Blit(sprWalker1.R, x-2, y-1)
+			case 'f':
+				c.Blit(sprFlyer1.R, x-2, y-1)
+			case 'P':
+				c.Blit(sprPart, x, y)
+			case 'H':
+				c.Blit(sprShip, x, y+2)
+			}
+		}
+	}
 }

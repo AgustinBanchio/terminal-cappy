@@ -74,7 +74,7 @@ func New(screen tcell.Screen) *Game {
 // reset rebuilds the world and respawns everything.
 func (g *Game) reset() {
 	g.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-	g.level = Build()
+	g.level = LoadDefault()
 	g.bg = NewBackground()
 	g.player = NewPlayer(g.level.SpawnX, g.level.SpawnY)
 
@@ -147,9 +147,17 @@ func (g *Game) handleEvent(ev tcell.Event) (quit bool) {
 		case tcell.KeyEscape, tcell.KeyCtrlC:
 			return true
 		case tcell.KeyLeft:
-			g.in.press(actLeft, now)
+			if ev.Modifiers()&tcell.ModShift != 0 {
+				g.nudge(-1)
+			} else {
+				g.in.press(actLeft, now)
+			}
 		case tcell.KeyRight:
-			g.in.press(actRight, now)
+			if ev.Modifiers()&tcell.ModShift != 0 {
+				g.nudge(1)
+			} else {
+				g.in.press(actRight, now)
+			}
 		case tcell.KeyUp:
 			g.in.press(actJump, now)
 		case tcell.KeyRune:
@@ -162,6 +170,10 @@ func (g *Game) handleEvent(ev tcell.Event) (quit bool) {
 				g.in.press(actLeft, now)
 			case 'd':
 				g.in.press(actRight, now)
+			case ',':
+				g.nudge(-1)
+			case '.':
+				g.nudge(1)
 			case 'r':
 				g.reset()
 			case 'p':
@@ -281,6 +293,15 @@ func (g *Game) liftOffset() int {
 	return int(t * t * 14)
 }
 
+// nudge queues a 1px micro-step. Unlike held movement, each keypress
+// maps to exactly one pixel, so precision never depends on key-repeat
+// timing; holding the key gives a slow creep via auto-repeat.
+func (g *Game) nudge(dir int) {
+	if g.state == StatePlaying {
+		g.player.NudgeX += dir
+	}
+}
+
 func (g *Game) say(msg string, secs float64) {
 	g.msg, g.msgT = msg, secs
 }
@@ -310,7 +331,7 @@ func (g *Game) draw() {
 	camX, camY := int(g.cam.X)+sx, int(g.cam.Y)+sy
 
 	g.bg.Draw(c, camX, camY, g.time)
-	g.level.DrawBackdrop(c, camX, camY)
+	g.level.DrawBackdrop(c, camX, camY, g.time)
 	g.level.Draw(c, camX, camY)
 
 	c.Blit(sprShip, g.level.ShipX-camX, g.level.ShipY-g.liftOffset()-camY)
@@ -493,7 +514,7 @@ func (g *Game) drawTitle() {
 	if int(g.time*2)%2 == 0 {
 		g.textCentered(rows-5, "PRESS ANY KEY TO CONTINUE", 231)
 	}
-	g.textCentered(rows-3, "arrows/AD move   Z jump   X shoot", 245)
+	g.textCentered(rows-3, "arrows/AD move   Z jump   X shoot   ,/. tiny step", 245)
 	g.textCentered(rows-2, "hold into a wall to slide, Z to wall jump", 245)
 	g.text(1, rows-1, "retro demo", 240)
 	g.text(c.W-13, rows-1, "ESC to quit", 240)

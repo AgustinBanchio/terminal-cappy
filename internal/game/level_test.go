@@ -1,11 +1,14 @@
 package game
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
-func TestBuildWorld(t *testing.T) {
-	l := Build()
+func TestEmbeddedLevelIsPlayable(t *testing.T) {
+	l := LoadDefault()
 
-	if l.W <= 0 || l.H != chunkRows {
+	if l.W <= 0 || l.H <= 0 {
 		t.Fatalf("bad dimensions %dx%d", l.W, l.H)
 	}
 
@@ -26,11 +29,11 @@ func TestBuildWorld(t *testing.T) {
 			t.Fatalf("spawn %q inside solid terrain at %.0f,%.0f", s.Kind, s.X, s.Y)
 		}
 	}
-	if parts != 4 {
-		t.Fatalf("want 4 ship parts in the curated world, got %d", parts)
+	if parts < 1 {
+		t.Fatal("level has no ship parts, cannot be won")
 	}
 
-	// The ship must sit inside the world with its landing spot solid.
+	// The ship must sit inside the world with ground under it.
 	if l.ShipX < 0 || l.ShipX+sprShip.W > l.PxW() {
 		t.Fatalf("ship out of bounds at x=%d", l.ShipX)
 	}
@@ -39,8 +42,20 @@ func TestBuildWorld(t *testing.T) {
 	}
 }
 
+func TestLevelRoundTrip(t *testing.T) {
+	l := LoadDefault()
+	data := l.Marshal()
+	l2, err := ParseLevel(data)
+	if err != nil {
+		t.Fatalf("re-parse failed: %v", err)
+	}
+	if !bytes.Equal(l2.Marshal(), data) {
+		t.Fatal("marshal/parse round trip is not stable")
+	}
+}
+
 func TestWorldBounds(t *testing.T) {
-	l := Build()
+	l := LoadDefault()
 	if !l.SolidTile(-1, 5) || !l.SolidTile(l.W, 5) {
 		t.Fatal("world edges must be solid walls")
 	}
@@ -52,27 +67,51 @@ func TestWorldBounds(t *testing.T) {
 	}
 }
 
-func TestChunkEdgeContract(t *testing.T) {
-	// Every segment must have solid floor and open air at both edges so
-	// the curated sequence stays traversable on foot. The final chunk is
-	// exempt: its far edge is the deliberate wall capping the world.
-	chunks := worldChunks()
-	for i, c := range chunks {
-		edges := []int{0, 1, c.w - 2, c.w - 1}
-		if i == len(chunks)-1 {
-			edges = edges[:2]
+func TestSetCell(t *testing.T) {
+	l := LoadDefault()
+
+	if l.SetCell(LayerBG, 0, 0, '#') {
+		t.Fatal("rock must not be a valid bg tile")
+	}
+	if !l.SetCell(LayerBG, 0, 0, 'c') || l.Cell(LayerBG, 0, 0) != 'c' {
+		t.Fatal("valid bg tile not applied")
+	}
+
+	// Solid edits must refresh collision immediately.
+	if !l.SetCell(LayerSolid, 2, 2, '#') || !l.SolidTile(2, 2) {
+		t.Fatal("solid edit did not refresh collision")
+	}
+
+	// Placing a second spawn moves it: exactly one 'S' remains.
+	l.SetCell(LayerSolid, 5, 5, 'S')
+	count := 0
+	for ty := 0; ty < l.H; ty++ {
+		for tx := 0; tx < l.W; tx++ {
+			if l.Cell(LayerSolid, tx, ty) == 'S' {
+				count++
+			}
 		}
-		for _, tx := range edges {
-			for ty := 20; ty < chunkRows; ty++ {
-				if c.rows[ty][tx] != '#' {
-					t.Fatalf("chunk %d: edge column %d row %d is not floor", i, tx, ty)
-				}
-			}
-			for ty := 14; ty < 20; ty++ {
-				if c.rows[ty][tx] == '#' {
-					t.Fatalf("chunk %d: edge column %d row %d blocks walking", i, tx, ty)
-				}
-			}
+	}
+	if count != 1 {
+		t.Fatalf("want exactly 1 spawn after move, got %d", count)
+	}
+	if l.SpawnX != float64(5*TilePx+TilePx/2) {
+		t.Fatal("spawn position not updated after move")
+	}
+}
+
+func TestParseRejectsBadLevels(t *testing.T) {
+	cases := []string{
+		"",
+		"not-a-level",
+		"cappy-level v1\n@solid\n##\n#\n@bg\n..\n..\n@fg\n..\n..\n", // ragged
+		"cappy-level v1\n@solid\n##\n##\n@bg\n..\n..\n",             // missing fg
+		"cappy-level v1\n@solid\nZ#\n##\n@bg\n..\n..\n@fg\n..\n..\n", // bad tile
+		"cappy-level v1\n@solid\n..\n##\n@bg\n..\n..\n@fg\n..\n..\n", // no spawn/ship
+	}
+	for i, c := range cases {
+		if _, err := ParseLevel([]byte(c)); err == nil {
+			t.Fatalf("case %d: want parse error, got none", i)
 		}
 	}
 }

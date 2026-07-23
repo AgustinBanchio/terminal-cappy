@@ -51,6 +51,8 @@ type Player struct {
 	Sliding  bool
 	wallDir  int // -1 wall on the left, 1 wall on the right
 
+	NudgeX int // queued 1px micro-steps from the precision keys
+
 	lock    float64 // horizontal control lock (wall jump, knockback)
 	coyote  float64
 	jumpBuf float64
@@ -76,6 +78,25 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 		if dir != 0 {
 			p.Facing = dir
 		}
+	}
+
+	// Precision micro-steps: exactly 1px per keypress, pixel-collided,
+	// ignored while running so they never fight held movement.
+	if p.NudgeX != 0 {
+		if dir == 0 && p.lock <= 0 {
+			step := 1.0
+			if p.NudgeX < 0 {
+				step = -1.0
+			}
+			for i := 0; i < p.NudgeX*int(step); i++ {
+				if l.SolidBox(p.X+step, p.Y, playerW, playerH) {
+					break
+				}
+				p.X += step
+			}
+			p.Facing = int(step)
+		}
+		p.NudgeX = 0
 	}
 
 	// Wall contact probes (a sliver just outside each side of the hitbox).
