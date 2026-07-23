@@ -104,8 +104,8 @@ func TestParseRejectsBadLevels(t *testing.T) {
 	cases := []string{
 		"",
 		"not-a-level",
-		"cappy-level v1\n@solid\n##\n#\n@bg\n..\n..\n@fg\n..\n..\n", // ragged
-		"cappy-level v1\n@solid\n##\n##\n@bg\n..\n..\n",             // missing fg
+		"cappy-level v1\n@solid\n##\n#\n@bg\n..\n..\n@fg\n..\n..\n",  // ragged
+		"cappy-level v1\n@solid\n##\n##\n@bg\n..\n..\n",              // missing fg
 		"cappy-level v1\n@solid\nZ#\n##\n@bg\n..\n..\n@fg\n..\n..\n", // bad tile
 		"cappy-level v1\n@solid\n..\n##\n@bg\n..\n..\n@fg\n..\n..\n", // no spawn/ship
 	}
