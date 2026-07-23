@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"runtime/debug"
 	"time"
 	"unicode"
 
@@ -11,6 +12,19 @@ import (
 
 	"github.com/AgustinBanchio/terminal-cappy/internal/gfx"
 )
+
+// Version is the fallback shown on the title screen for local builds.
+// Releases are tagged to match; module-installed builds (go run/install
+// @vX.Y.Z) display the exact version stamped by the toolchain instead.
+const Version = "v0.1.0"
+
+func displayVersion() string {
+	if bi, ok := debug.ReadBuildInfo(); ok &&
+		bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return Version
+}
 
 type State int
 
@@ -810,6 +824,6 @@ func (g *Game) drawTitle() {
 	}
 	g.textCentered(rows-3, "arrows/AD move  Z jump  X shoot  ,/. tiny step  M map", 245)
 	g.textCentered(rows-2, "hold into a wall to slide, Z to wall jump", 245)
-	g.text(1, rows-1, "retro demo", 240)
+	g.text(1, rows-1, "retro demo "+displayVersion(), 240)
 	g.text(c.W-13, rows-1, "ESC to quit", 240)
 }
