@@ -54,6 +54,10 @@ var palettes = [LayerCount][]TileOption{
 		{'H', "ship"},
 		{'a', "walker"},
 		{'f', "flyer"},
+		{'b', "bat"},
+		{'u', "lurker"},
+		{'z', "shardling"},
+		{'e', "magling"},
 		{'P', "part"},
 		{'D', "boss Dimi"},
 		{'Q', "boss Prisma"},
@@ -291,7 +295,8 @@ func (l *Level) refresh() {
 				l.ShipX, l.ShipY = tx*TilePx, ty*TilePx+2
 			case ch == 'd':
 				l.Doors = append(l.Doors, [2]int{tx, ty})
-			case ch == 'a' || ch == 'f' || ch == 'P' ||
+			case ch == 'a' || ch == 'f' || ch == 'b' || ch == 'u' ||
+				ch == 'z' || ch == 'e' || ch == 'P' ||
 				ch == 'D' || ch == 'Q' || ch == 'M':
 				l.Spawns = append(l.Spawns, Spawn{Kind: rune(ch), X: px, Y: py})
 			}
@@ -609,6 +614,14 @@ func (l *Level) DrawMarkers(c *gfx.Canvas, camX, camY int) {
 				c.Blit(sprWalker1.R, x-2, y-1)
 			case 'f':
 				c.Blit(sprFlyer1.R, x-2, y-1)
+			case 'b':
+				c.Blit(sprBat1.R, x-2, y)
+			case 'u':
+				c.Blit(sprLurker1.R, x-2, y-1)
+			case 'z':
+				c.Blit(sprShard1.R, x-1, y-2)
+			case 'e':
+				c.Blit(sprMagling1.R, x-2, y-1)
 			case 'P':
 				c.Blit(sprPart, x, y)
 			case 'H':

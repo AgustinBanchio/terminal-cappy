@@ -165,15 +165,15 @@ func main() {
 	g.rect(g.solid, 56, 35, 59, 40, '.')
 	g.rect(g.solid, 150, 35, 153, 40, '.')
 	g.rect(g.solid, 236, 35, 239, 40, '.')
-	// Rubble mounds under shaft and connector mouths: the tunnels are
-	// taller than a jump, so a 3-tile hop onto the mound puts the walls
-	// of the chimney above within wall-jump reach. The middle shaft
-	// (x186) deliberately gets no mound: it is a one-way drop, and you
-	// climb back out through the east or west chimney instead.
-	for _, m := range [][2]int{{97, 33}, {263, 33}} {
+	// Climbing steps BESIDE each shaft and connector mouth, never under
+	// it: the fall channel stays fully clear (nothing to strand on),
+	// and to climb you hop from the step sideways into the chimney.
+	// The middle shaft (x186) deliberately gets no step: it is a
+	// one-way drop; climb back out through the east or west chimney.
+	for _, m := range [][2]int{{93, 33}, {259, 33}} {
 		g.rect(g.solid, m[0], m[1], m[0]+1, 36, '#')
 	}
-	for _, m := range [][2]int{{57, 42}, {151, 42}, {237, 42}} {
+	for _, m := range [][2]int{{53, 42}, {147, 42}, {233, 42}} {
 		g.rect(g.solid, m[0], m[1], m[0]+1, 45, '#')
 	}
 	// carved chambers
@@ -226,11 +226,12 @@ func main() {
 	g.rect(g.solid, 12, 50, 136, 57, '.') // great burning cavern
 	g.rect(g.solid, 16, 42, 19, 50, '.')  // west way down: one-way plunge
 	g.rect(g.solid, 84, 42, 87, 50, '.')  // east way down
-	// Ledge stairs up to the east way out only. The west way is a
-	// deliberate one-way drop into the pocket; leaving it means finding
-	// the crawl corridor below.
-	g.rect(g.solid, 79, 55, 81, 55, '#')
-	g.rect(g.solid, 84, 52, 86, 52, '#')
+	// Ledge stairs up to the east way out only, offset BESIDE the
+	// chimney so the drop stays clear; from the top step you hop left
+	// into the chimney. The west way is a deliberate one-way drop into
+	// the pocket; leaving it means finding the crawl corridor below.
+	g.rect(g.solid, 91, 55, 92, 55, '#')
+	g.rect(g.solid, 88, 52, 89, 52, '#')
 	// Magmaw's chamber inside the cavern
 	g.rect(g.solid, 28, 48, 74, 49, '#') // ceiling
 	g.rect(g.solid, 28, 50, 29, 57, '#') // west wall
@@ -332,24 +333,43 @@ func main() {
 			}
 		}
 	}
-	placeOnFloor('a', 60, 120, 8, 24, 17)   // ruins shelf
-	placeOnFloor('a', 168, 296, 8, 24, 19)  // eastern plains
-	placeOnFloor('a', 20, 296, 29, 45, 23)  // cave tunnels
-	placeOnFloor('a', 202, 260, 48, 58, 22) // crystal terraces
-	placeOnFloor('a', 78, 134, 50, 58, 15)  // lava islands
-	for _, f := range [][2]int{
-		{70, 14}, {105, 13}, {180, 13}, {230, 12}, {286, 12}, // surface
-		{70, 34}, {230, 42}, // cave chambers
-		{212, 54}, {226, 52}, {244, 50}, {256, 48}, // crystal terraces
-		{94, 53}, {22, 53}, // lava
+	// placeOnCeiling hangs lurkers under cave ceilings with room to
+	// drop below them.
+	placeOnCeiling := func(kind byte, x0, x1, y0, y1, spacing int) {
+		for x := x0; x <= x1; x += spacing {
+			for y := y0; y <= y1; y++ {
+				if g.get(g.solid, x, y) == '.' && g.solidAt(x, y-1) &&
+					g.get(g.solid, x, y+1) == '.' && g.get(g.solid, x, y+2) == '.' {
+					g.set(g.solid, x, y, kind)
+					break
+				}
+			}
+		}
+	}
+
+	placeOnFloor('a', 60, 120, 8, 24, 17)    // ruins shelf: walkers
+	placeOnFloor('a', 168, 296, 8, 24, 19)   // eastern plains: walkers
+	placeOnFloor('a', 20, 296, 29, 45, 37)   // caves: a few walkers...
+	placeOnCeiling('u', 34, 290, 29, 44, 31) // ...plus ceiling lurkers
+	placeOnFloor('z', 204, 258, 48, 58, 21)  // crystal terraces: shardlings
+	placeOnFloor('e', 78, 134, 50, 58, 13)   // lava islands: maglings
+
+	for _, e := range []struct {
+		x, y int
+		k    byte
+	}{
+		{70, 14, 'f'}, {105, 13, 'f'}, {180, 13, 'f'}, {230, 12, 'f'}, {286, 12, 'f'},
+		{70, 34, 'b'}, {230, 42, 'b'}, {130, 32, 'b'}, {202, 32, 'b'}, // cave bats
+		{212, 54, 'f'}, {244, 50, 'f'}, // crystal drifters
+		{22, 53, 'f'}, // the west pocket keeps one
 		// guards for the free ship parts
-		{301, 13}, {309, 13}, // eastern lookout
-		{157, 30}, {165, 30}, // upper cave chamber
-		{203, 53}, {209, 53}, // crystal deep end
-		{112, 52}, {118, 52}, // lava island
+		{301, 13, 'f'}, {309, 13, 'f'}, // eastern lookout
+		{157, 30, 'b'}, {165, 30, 'b'}, // upper cave chamber
+		{203, 53, 'z'}, {209, 53, 'z'}, // crystal deep end
+		{112, 52, 'e'}, {118, 53, 'f'}, // lava island
 	} {
-		if g.get(g.solid, f[0], f[1]) == '.' {
-			g.set(g.solid, f[0], f[1], 'f')
+		if g.get(g.solid, e.x, e.y) == '.' {
+			g.set(g.solid, e.x, e.y, e.k)
 		}
 	}
 
@@ -393,21 +413,14 @@ func write(g *gridSet) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	parts, walkers, flyers, bosses := 0, 0, 0, 0
+	counts := map[rune]int{}
 	for _, s := range lvl.Spawns {
-		switch s.Kind {
-		case 'P':
-			parts++
-		case 'a':
-			walkers++
-		case 'f':
-			flyers++
-		default:
-			bosses++
-		}
+		counts[s.Kind]++
 	}
-	fmt.Printf("wrote level1.txt: %dx%d, %d parts + %d bosses, %d walkers, %d flyers, %d door tiles\n",
-		lvl.W, lvl.H, parts, bosses, walkers, flyers, len(lvl.Doors))
+	fmt.Printf("wrote level1.txt: %dx%d, %d parts + %d bosses, enemies: %d walkers %d flyers %d bats %d lurkers %d shardlings %d maglings, %d door tiles\n",
+		lvl.W, lvl.H, counts['P'], counts['D']+counts['Q']+counts['M'],
+		counts['a'], counts['f'], counts['b'], counts['u'], counts['z'], counts['e'],
+		len(lvl.Doors))
 }
 
 // checkConnectivity flood-fills open air from the spawn and reports any

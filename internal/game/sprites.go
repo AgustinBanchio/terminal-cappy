@@ -115,6 +115,98 @@ var (
 		"..t.t.."))
 )
 
+// Bat: a cave dweller that roosts, then dive-dashes. 8x4.
+var batPal = map[rune]uint8{
+	'k': 235, // body
+	'w': 59,  // wings
+	'E': 196, // eyes
+}
+
+var (
+	sprBat1 = gfx.NewFrames(gfx.MustSprite(batPal,
+		"ww....ww",
+		".wwkkww.",
+		"..kEEk..",
+		"........"))
+	sprBat2 = gfx.NewFrames(gfx.MustSprite(batPal,
+		"........",
+		"..wkkw..",
+		".wwEEww.",
+		"ww....ww"))
+)
+
+// Lurker: a pale cave spider that hangs from ceilings and drops on
+// passers-by. Symmetric, so it reads right hanging or walking. 7x5.
+var lurkerPal = map[rune]uint8{
+	'l': 244, // legs
+	'B': 238, // body
+	'E': 226, // eyes
+}
+
+var (
+	sprLurker1 = gfx.NewFrames(gfx.MustSprite(lurkerPal,
+		"l.l.l.l",
+		".BBBBB.",
+		"lBEBEBl",
+		".BBBBB.",
+		"l.l.l.l"))
+	sprLurker2 = gfx.NewFrames(gfx.MustSprite(lurkerPal,
+		".l.l.l.",
+		".BBBBB.",
+		"lBEBEBl",
+		".BBBBB.",
+		".l.l.l."))
+)
+
+// Shardling: a floating crystal sentinel that fires aimed shards. 5x7.
+var shardPal = map[rune]uint8{
+	'C': 51,  // bright facets
+	'c': 38,  // dim facets
+	'P': 183, // core
+	'E': 201, // eye
+}
+
+var (
+	sprShard1 = gfx.NewFrames(gfx.MustSprite(shardPal,
+		"..C..",
+		".cPc.",
+		"CPEPC",
+		".cPc.",
+		"..C..",
+		".c.c.",
+		"c...c"))
+	sprShard2 = gfx.NewFrames(gfx.MustSprite(shardPal,
+		"..c..",
+		".CPC.",
+		"cPEPc",
+		".CPC.",
+		"..c..",
+		".C.C.",
+		"C...C"))
+)
+
+// Magling: a molten hopper from the deep fire. 7x5.
+var maglingPal = map[rune]uint8{
+	'K': 52,  // basalt hide
+	'O': 202, // molten cracks
+	'E': 231, // eyes
+}
+
+var (
+	sprMagling1 = gfx.NewFrames(gfx.MustSprite(maglingPal,
+		"..KKK..",
+		".KKKKK.",
+		"KOEKEOK",
+		"KKKOKKK",
+		".KK.KK."))
+	sprMagling2 = gfx.NewFrames(gfx.MustSprite(maglingPal,
+		".......",
+		".KKKKK.",
+		"KOEKEOK",
+		"KKKOKKK",
+		"KK...KK"))
+)
+
 // Boss: Dimi, warden of the ruins. A hulking spike-backed beast with
 // glowing eyes. 26x14.
 var dimiPal = map[rune]uint8{

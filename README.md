@@ -9,7 +9,10 @@ three of them guarded by big room-locking bosses (Dimi, warden of the
 ruins; Prisma, the crystal queen; Magmaw, lord of the deep fire).
 Explore in any order, fight through the locals, fix the ship, escape.
 
-Each region has its own parallax backdrop, and the surface has a storm
+Each region has its own parallax backdrop and its own fauna: walkers
+and drifting flyers on the surface, dive-bombing bats and
+ceiling-dropping lurkers in the caves, shard-firing crystal sentinels
+in the caverns, molten hoppers in the depths. The surface has a storm
 cycle: rain rolls in and out, and lightning whites out the whole
 screen for a beat.
 
@@ -84,7 +87,7 @@ four layers, embedded into the game binary at compile time:
 
 - `@solid`: collision and entities. Terrain: `#` rock, `%` ruin brick,
   `X` crystal rock, `~` lava (hazard), `d` boss door (solid only during
-  fights). Entities: `S` spawn, `H` ship, `a` walker, `f` flyer,
+  fights). Entities: `S` spawn, `H` ship, `a` walker, `f` flyer, `b` bat, `u` lurker, `z` shardling, `e` magling,
   `P` ship part, `D`/`Q`/`M` bosses.
 - `@bg`: decoration behind gameplay (`t` stalactite, `m` stalagmite,
   `I` pillar, `c` crystal, `r` ruin column, `b` rubble)

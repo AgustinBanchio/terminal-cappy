@@ -126,6 +126,14 @@ func (g *Game) reset() {
 			g.aliens = append(g.aliens, newAlien(alienWalker, s.X, s.Y))
 		case 'f':
 			g.aliens = append(g.aliens, newAlien(alienFlyer, s.X, s.Y))
+		case 'b':
+			g.aliens = append(g.aliens, newAlien(alienBat, s.X, s.Y))
+		case 'u':
+			g.aliens = append(g.aliens, newAlien(alienLurker, s.X, s.Y))
+		case 'z':
+			g.aliens = append(g.aliens, newAlien(alienShard, s.X, s.Y))
+		case 'e':
+			g.aliens = append(g.aliens, newAlien(alienMagling, s.X, s.Y))
 		case 'P':
 			g.pickups = append(g.pickups, &Pickup{Kind: pickupPart, X: s.X, Y: s.Y})
 			g.partsTotal++

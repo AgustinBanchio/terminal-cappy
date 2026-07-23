@@ -8,11 +8,18 @@ import (
 
 // --- aliens ------------------------------------------------------------
 
+// Each region has its own fauna: walkers and flyers on the surface,
+// bats and ceiling lurkers in the caves, shard-firing sentinels in the
+// crystal caverns, molten hoppers in the lava depths.
 type alienKind int
 
 const (
 	alienWalker alienKind = iota
 	alienFlyer
+	alienBat
+	alienLurker
+	alienShard
+	alienMagling
 )
 
 type Alien struct {
@@ -22,9 +29,13 @@ type Alien struct {
 	VX, VY float64
 	HP     int
 	dir    float64
+	homeX  float64
 	homeY  float64
 	t      float64
 	hurt   float64
+	cool   float64
+	dash   float64
+	mode   int
 }
 
 func newAlien(kind alienKind, x, y float64) *Alien {
@@ -34,20 +45,38 @@ func newAlien(kind alienKind, x, y float64) *Alien {
 		a.W, a.H, a.HP = 8, 5, 2
 	case alienFlyer:
 		a.W, a.H, a.HP = 7, 6, 1
+	case alienBat:
+		a.W, a.H, a.HP = 8, 4, 1
+	case alienLurker:
+		a.W, a.H, a.HP = 7, 5, 2
+		a.mode = -1 // snap to the ceiling on first update
+	case alienShard:
+		a.W, a.H, a.HP = 5, 7, 2
+	case alienMagling:
+		a.W, a.H, a.HP = 7, 5, 2
 	}
 	a.X, a.Y = x-a.W/2, y-a.H/2
-	a.homeY = a.Y
+	a.homeX, a.homeY = a.X, a.Y
 	return a
 }
 
 func (a *Alien) update(g *Game, dt float64) {
 	a.t += dt
 	a.hurt = math.Max(0, a.hurt-dt)
+	a.cool = math.Max(0, a.cool-dt)
 	switch a.Kind {
 	case alienWalker:
 		a.updateWalker(g.level, dt)
 	case alienFlyer:
 		a.updateFlyer(g.player, dt)
+	case alienBat:
+		a.updateBat(g, dt)
+	case alienLurker:
+		a.updateLurker(g, dt)
+	case alienShard:
+		a.updateShard(g, dt)
+	case alienMagling:
+		a.updateMagling(g, dt)
 	}
 
 	// Contact damage.
@@ -103,6 +132,135 @@ func (a *Alien) updateFlyer(p *Player, dt float64) {
 	a.Y = a.homeY + math.Sin(a.t*2.4)*3
 }
 
+// Bat: roosts drifting around its perch; when Cappy comes near it
+// dashes straight at her, then settles wherever the dash ended.
+func (a *Alien) updateBat(g *Game, dt float64) {
+	p := g.player
+	if a.dash > 0 {
+		a.dash -= dt
+		nx, ny := a.X+a.VX*dt, a.Y+a.VY*dt
+		if g.level.SolidBox(nx, ny, a.W, a.H) {
+			a.dash = 0
+		} else {
+			a.X, a.Y = nx, ny
+		}
+		if a.dash <= 0 {
+			a.homeX, a.homeY = a.X, a.Y
+			a.cool = 1.6
+		}
+		return
+	}
+	a.X = a.homeX + math.Sin(a.t*2.1)*2
+	a.Y = a.homeY + math.Sin(a.t*3.1)*1.5
+	dx := (p.X + playerW/2) - (a.X + a.W/2)
+	dy := (p.Y + playerH/2) - (a.Y + a.H/2)
+	a.dir = sign(dx)
+	if a.cool <= 0 && math.Abs(dx) < 45 && math.Abs(dy) < 35 {
+		d := math.Hypot(dx, dy)
+		if d > 1 {
+			a.VX, a.VY = dx/d*90, dy/d*90
+			a.dash = 0.5
+		}
+	}
+}
+
+// Lurker: crawls along the ceiling; when Cappy passes underneath it
+// lets go, lands, and gives chase on foot.
+func (a *Alien) updateLurker(g *Game, dt float64) {
+	l, p := g.level, g.player
+	if a.mode == -1 { // snap up to the nearest ceiling
+		for a.Y > 0 && !l.SolidBox(a.X, a.Y-0.5, a.W, 0.5) {
+			a.Y--
+		}
+		a.mode = 0
+	}
+	switch a.mode {
+	case 0: // ceiling patrol
+		nx := a.X + a.dir*10*dt
+		ceiling := l.SolidBox(nx, a.Y-0.5, a.W, 0.5)
+		if l.SolidBox(nx, a.Y, a.W, a.H) || !ceiling {
+			a.dir = -a.dir
+		} else {
+			a.X = nx
+		}
+		dx := (p.X + playerW/2) - (a.X + a.W/2)
+		if math.Abs(dx) < 10 && p.Y > a.Y && p.Y-a.Y < 60 {
+			a.mode = 1 // drop!
+		}
+	case 1: // fallen: chase on foot
+		a.VY = math.Min(a.VY+fallGrav*dt, maxFall)
+		ny := a.Y + a.VY*dt
+		if l.SolidBox(a.X, ny, a.W, a.H) {
+			a.Y = math.Floor((ny+a.H)/TilePx)*TilePx - a.H
+			a.VY = 0
+		} else {
+			a.Y = ny
+		}
+		a.dir = sign((p.X + playerW/2) - (a.X + a.W/2))
+		nx := a.X + a.dir*24*dt
+		if !l.SolidBox(nx, a.Y, a.W, a.H) {
+			a.X = nx
+		}
+	}
+}
+
+// Shardling: holds its ground, bobbing, and fires aimed shards while
+// Cappy is in range.
+func (a *Alien) updateShard(g *Game, dt float64) {
+	p := g.player
+	a.Y = a.homeY + math.Sin(a.t*2)*1.5
+	cx, cy := a.X+a.W/2, a.Y+a.H/2
+	dx := (p.X + playerW/2) - cx
+	dy := (p.Y + playerH/2) - cy
+	a.dir = sign(dx)
+	if a.cool <= 0 && math.Abs(dx) < 55 && math.Abs(dy) < 45 {
+		a.cool = 2.2
+		d := math.Hypot(dx, dy)
+		if d > 1 {
+			g.spawnShot(cx, cy, dx/d*70, dy/d*70, 0, 51, 38)
+		}
+	}
+}
+
+// Magling: hops toward Cappy in heavy little arcs, scattering embers
+// where it lands.
+func (a *Alien) updateMagling(g *Game, dt float64) {
+	l, p := g.level, g.player
+	a.VY = math.Min(a.VY+fallGrav*dt, maxFall)
+	ny := a.Y + a.VY*dt
+	wasAir := a.VY != 0
+	grounded := false
+	if l.SolidBox(a.X, ny, a.W, a.H) {
+		if a.VY > 0 {
+			a.Y = math.Floor((ny+a.H)/TilePx)*TilePx - a.H
+			grounded = true
+			if wasAir {
+				g.emitBurst(a.X+a.W/2, a.Y+a.H, 3, []uint8{202, 208, 130}, 25, 100)
+			}
+		}
+		a.VY = 0
+		a.VX = 0
+	} else {
+		a.Y = ny
+	}
+	nx := a.X + a.VX*dt
+	if !l.SolidBox(nx, a.Y, a.W, a.H) {
+		a.X = nx
+	} else {
+		a.VX = 0
+	}
+	if grounded && a.cool <= 0 {
+		dx := (p.X + playerW/2) - (a.X + a.W/2)
+		if math.Abs(dx) < 60 {
+			a.dir = sign(dx)
+			a.VX, a.VY = a.dir*34, -85
+		} else {
+			a.VX, a.VY = a.dir*14, -60
+		}
+		a.cool = 1.6
+	}
+}
+
 func (a *Alien) damage(g *Game, dmg int, fromVX float64) {
 	a.HP -= dmg
 	a.hurt = 0.1
@@ -110,9 +268,20 @@ func (a *Alien) damage(g *Game, dmg int, fromVX float64) {
 	if a.HP > 0 {
 		return
 	}
-	colors := []uint8{40, 118, 231}
-	if a.Kind == alienFlyer {
+	var colors []uint8
+	switch a.Kind {
+	case alienFlyer:
 		colors = []uint8{165, 201, 231}
+	case alienBat:
+		colors = []uint8{59, 235, 196}
+	case alienLurker:
+		colors = []uint8{244, 238, 226}
+	case alienShard:
+		colors = []uint8{51, 183, 231}
+	case alienMagling:
+		colors = []uint8{202, 52, 231}
+	default:
+		colors = []uint8{40, 118, 231}
 	}
 	g.emitBurst(a.X+a.W/2, a.Y+a.H/2, 14, colors, 55, 160)
 	g.shake = math.Max(g.shake, 1)
@@ -135,6 +304,30 @@ func (a *Alien) draw(c *gfx.Canvas, camX, camY int) {
 			f = sprFlyer1
 		} else {
 			f = sprFlyer2
+		}
+	case alienBat:
+		if int(a.t*8)%2 == 0 {
+			f = sprBat1
+		} else {
+			f = sprBat2
+		}
+	case alienLurker:
+		if int(a.t*5)%2 == 0 {
+			f = sprLurker1
+		} else {
+			f = sprLurker2
+		}
+	case alienShard:
+		if int(a.t*3)%2 == 0 {
+			f = sprShard1
+		} else {
+			f = sprShard2
+		}
+	case alienMagling:
+		if a.VY == 0 {
+			f = sprMagling1
+		} else {
+			f = sprMagling2
 		}
 	}
 	spr := f.Facing(int(a.dir))
