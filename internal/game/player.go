@@ -4,27 +4,38 @@ import (
 	"math"
 	"time"
 
-	"cappy/internal/gfx"
+	"github.com/AgustinBanchio/terminal-cappy/internal/gfx"
 )
 
-// Movement tuning, in pixels and seconds. The canvas is ~48px tall in a
-// default 80x24 terminal, so a full jump (~17px) is about a third of it.
+// Movement tuning, in pixels and seconds, modelled on Hollow Knight's
+// controller feel translated to our scale (the canvas is ~48px tall in
+// a default 80x24 terminal):
+//
+//   - horizontal velocity is set directly to a locked run speed: no
+//     acceleration ramp, no skid, identical control on ground and air
+//   - gravity is asymmetric: falling is ~1.6x heavier than rising, so
+//     jumps peak floaty and land snappy
+//   - coyote time and jump buffering keep inputs forgiving
+//   - wall jumps (and knockback) briefly lock horizontal control so
+//     the kick away from the wall cannot be instantly cancelled
 const (
 	playerW = 6
 	playerH = 10
 
-	runSpeed  = 46.0
-	runAccel  = 300.0
-	friction  = 260.0
-	gravity   = 340.0
-	maxFall   = 130.0
-	jumpVel   = -108.0
-	slideFall = 28.0 // max fall speed while wall sliding
-	wallJumpX = 60.0
-	wallJumpY = -95.0
+	runSpeed  = 52.0
+	riseGrav  = 330.0
+	fallGrav  = 540.0
+	maxFall   = 150.0
+	jumpVel   = -112.0
+	slideFall = 26.0 // fixed fall speed while wall sliding
 
-	coyoteTime = 0.10
-	jumpBuffer = 0.12
+	wallJumpX    = 62.0
+	wallJumpY    = -102.0
+	wallJumpLock = 0.14
+	hurtLock     = 0.25
+
+	coyoteTime = 0.09
+	jumpBuffer = 0.10
 	shootEvery = 0.18
 	bulletVel  = 140.0
 	maxHP      = 5
@@ -40,6 +51,7 @@ type Player struct {
 	Sliding  bool
 	wallDir  int // -1 wall on the left, 1 wall on the right
 
+	lock    float64 // horizontal control lock (wall jump, knockback)
 	coyote  float64
 	jumpBuf float64
 	shootCD float64
@@ -55,26 +67,14 @@ func NewPlayer(x, y float64) *Player {
 func (p *Player) Update(g *Game, dt float64, now time.Time) {
 	l := g.level
 
-	dir := 0.0
-	if g.in.held(actLeft, now) {
-		dir -= 1
-	}
-	if g.in.held(actRight, now) {
-		dir += 1
-	}
-	if dir != 0 {
-		p.Facing = int(dir)
-	}
+	dir := g.in.dir(now)
 
-	// Horizontal acceleration / friction.
-	if dir != 0 {
-		p.VX += dir * runAccel * dt
-		p.VX = math.Max(-runSpeed, math.Min(runSpeed, p.VX))
-	} else if p.OnGround {
-		if p.VX > 0 {
-			p.VX = math.Max(0, p.VX-friction*dt)
-		} else {
-			p.VX = math.Min(0, p.VX+friction*dt)
+	// Locked run speed: velocity is set, not accelerated, unless a wall
+	// jump or knockback temporarily owns the horizontal axis.
+	if p.lock <= 0 {
+		p.VX = float64(dir) * runSpeed
+		if dir != 0 {
+			p.Facing = dir
 		}
 	}
 
@@ -92,13 +92,17 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 	p.Sliding = !p.OnGround && p.VY > 0 &&
 		((touchL && dir < 0) || (touchR && dir > 0))
 
-	// Gravity.
-	p.VY += gravity * dt
-	limit := maxFall
-	if p.Sliding {
-		limit = slideFall
+	// Asymmetric gravity.
+	grav := riseGrav
+	if p.VY >= 0 {
+		grav = fallGrav
 	}
-	p.VY = math.Min(p.VY, limit)
+	p.VY += grav * dt
+	if p.Sliding {
+		p.VY = math.Min(p.VY, slideFall)
+	} else {
+		p.VY = math.Min(p.VY, maxFall)
+	}
 
 	// Jumping: buffered presses, coyote time, and wall jumps.
 	if g.in.consume(actJump) {
@@ -114,6 +118,7 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 			p.VY = wallJumpY
 			p.VX = float64(-p.wallDir) * wallJumpX
 			p.Facing = -p.wallDir
+			p.lock = wallJumpLock
 			p.jumpBuf = 0
 			g.emitDust(p.X+playerW/2+float64(p.wallDir*3), p.Y+playerH/2, 4)
 		}
@@ -125,7 +130,6 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 		g.spawnBullet(mx, my, float64(p.Facing)*bulletVel)
 		p.shootCD = shootEvery
 		p.muzzle = 0.07
-		p.VX -= float64(p.Facing) * 6 // a little recoil
 	}
 
 	p.moveX(l, dt)
@@ -142,6 +146,7 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 		g.emitDust(p.X+playerW/2+float64(p.wallDir*3), p.Y+playerH, 1)
 	}
 
+	p.lock = math.Max(0, p.lock-dt)
 	p.coyote = math.Max(0, p.coyote-dt)
 	p.jumpBuf = math.Max(0, p.jumpBuf-dt)
 	p.shootCD = math.Max(0, p.shootCD-dt)
@@ -196,6 +201,7 @@ func (p *Player) Hurt(g *Game, fromDir float64) {
 	p.HurtCD = 1.2
 	p.VX = -fromDir * 60
 	p.VY = -60
+	p.lock = hurtLock
 	g.shake = 2
 	g.emitBurst(p.X+playerW/2, p.Y+playerH/2, 8, []uint8{160, 196, 255}, 50, 200)
 	if p.HP <= 0 {

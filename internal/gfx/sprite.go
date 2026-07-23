@@ -46,6 +46,20 @@ func (s *Sprite) FlipH() *Sprite {
 	return out
 }
 
+// Scale returns the sprite enlarged by an integer factor.
+func (s *Sprite) Scale(n int) *Sprite {
+	if n <= 1 {
+		return s
+	}
+	out := &Sprite{W: s.W * n, H: s.H * n, Pix: make([]int16, s.W*s.H*n*n)}
+	for y := 0; y < out.H; y++ {
+		for x := 0; x < out.W; x++ {
+			out.Pix[y*out.W+x] = s.Pix[(y/n)*s.W+(x/n)]
+		}
+	}
+	return out
+}
+
 // Frames pairs the right-facing and left-facing variants of a sprite.
 type Frames struct {
 	R, L *Sprite

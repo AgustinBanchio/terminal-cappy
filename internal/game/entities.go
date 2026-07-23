@@ -3,7 +3,7 @@ package game
 import (
 	"math"
 
-	"cappy/internal/gfx"
+	"github.com/AgustinBanchio/terminal-cappy/internal/gfx"
 )
 
 // --- aliens ------------------------------------------------------------
@@ -63,7 +63,7 @@ func (a *Alien) update(g *Game, dt float64) {
 
 func (a *Alien) updateWalker(l *Level, dt float64) {
 	// Gravity + floor collision.
-	a.VY = math.Min(a.VY+gravity*dt, maxFall)
+	a.VY = math.Min(a.VY+fallGrav*dt, maxFall)
 	ny := a.Y + a.VY*dt
 	grounded := false
 	if l.SolidBox(a.X, ny, a.W, a.H) {
@@ -216,7 +216,7 @@ func (pk *Pickup) update(g *Game, dt float64) bool {
 	pk.t += dt
 	if pk.Kind == pickupHeart {
 		// Dropped hearts fall until they land.
-		pk.VY = math.Min(pk.VY+gravity*dt, maxFall)
+		pk.VY = math.Min(pk.VY+fallGrav*dt, maxFall)
 		ny := pk.Y + pk.VY*dt
 		if g.level.SolidBox(pk.X-2, ny-2, 4, 4) {
 			pk.VY = 0

@@ -1,6 +1,6 @@
 package game
 
-import "cappy/internal/gfx"
+import "github.com/AgustinBanchio/terminal-cappy/internal/gfx"
 
 // All art is authored facing right; left-facing variants are mirrored
 // at startup. Colours are xterm-256 palette indices.
@@ -62,6 +62,10 @@ var (
 		"..RR.R....",
 		"..BB.B....")
 )
+
+// sprPortrait is Cappy's helmet-and-head, doubled in size, used as the
+// avatar in dialogue boxes.
+var sprPortrait = gfx.MustSprite(cappyPal, cappyBody[:6]...).Scale(2)
 
 // Walker alien: a grumpy green blob on stubby feet. 8x5.
 var walkerPal = map[rune]uint8{

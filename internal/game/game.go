@@ -9,7 +9,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"cappy/internal/gfx"
+	"github.com/AgustinBanchio/terminal-cappy/internal/gfx"
 )
 
 type State int
@@ -35,7 +35,6 @@ type Game struct {
 	canvas *gfx.Canvas
 	in     input
 	rng    *rand.Rand
-	seed   int64
 	state  State
 
 	level  *Level
@@ -63,20 +62,20 @@ type Game struct {
 	texts []textCmd
 }
 
-func New(screen tcell.Screen, seed int64) *Game {
+func New(screen tcell.Screen) *Game {
 	cols, rows := screen.Size()
 	g := &Game{screen: screen, canvas: gfx.NewCanvas(cols, rows)}
-	g.reset(seed)
+	g.in = newInput()
+	g.reset()
 	g.state = StateTitle
 	return g
 }
 
-// reset regenerates the planet from a seed and respawns everything.
-func (g *Game) reset(seed int64) {
-	g.seed = seed
-	g.rng = rand.New(rand.NewSource(seed))
-	g.level = Generate(seed)
-	g.bg = NewBackground(g.rng)
+// reset rebuilds the world and respawns everything.
+func (g *Game) reset() {
+	g.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	g.level = Build()
+	g.bg = NewBackground()
 	g.player = NewPlayer(g.level.SpawnX, g.level.SpawnY)
 
 	g.aliens = g.aliens[:0]
@@ -164,7 +163,7 @@ func (g *Game) handleEvent(ev tcell.Event) (quit bool) {
 			case 'd':
 				g.in.press(actRight, now)
 			case 'r':
-				g.reset(time.Now().UnixNano())
+				g.reset()
 			case 'p':
 				if g.state == StatePlaying {
 					g.state = StatePaused
@@ -311,6 +310,7 @@ func (g *Game) draw() {
 	camX, camY := int(g.cam.X)+sx, int(g.cam.Y)+sy
 
 	g.bg.Draw(c, camX, camY, g.time)
+	g.level.DrawBackdrop(c, camX, camY)
 	g.level.Draw(c, camX, camY)
 
 	c.Blit(sprShip, g.level.ShipX-camX, g.level.ShipY-g.liftOffset()-camY)
@@ -330,11 +330,13 @@ func (g *Game) draw() {
 	for _, p := range g.particles {
 		drawParticle(c, p, camX, camY)
 	}
+	g.level.DrawForeground(c, camX, camY, g.time)
 
 	switch g.state {
 	case StateTitle:
 		g.drawTitle()
 	case StatePlaying:
+		g.drawDialogue()
 		g.drawHUD()
 	case StatePaused:
 		g.drawHUD()
@@ -346,7 +348,7 @@ func (g *Game) draw() {
 				"CAPPY WAS LOST IN SPACE...",
 				g.deathBy,
 				"",
-				"press R for a new planet",
+				"press R to try again",
 			}, 196)
 		}
 	case StateWon:
@@ -356,7 +358,7 @@ func (g *Game) draw() {
 				"SHIP REPAIRED!",
 				"CAPPY ESCAPES THE PLANET",
 				"",
-				"press R for a new planet, ESC to quit",
+				"press R to play again, ESC to quit",
 			}, 220)
 		}
 	}
@@ -405,7 +407,44 @@ func (g *Game) drawHUD() {
 	if g.msgT > 0 {
 		g.textCentered(2, g.msg, 231)
 	}
-	g.text(1, c.Rows()-1, fmt.Sprintf("seed %d", g.seed), 240)
+}
+
+// drawDialogue shows a speech box with Cappy's avatar while she stands
+// near the crashed ship.
+func (g *Game) drawDialogue() {
+	shipCX := float64(g.level.ShipX + sprShip.W/2)
+	px := g.player.X + playerW/2
+	if math.Abs(px-shipCX) > 46 {
+		return
+	}
+	var lines []string
+	if g.partsGot < g.partsTotal {
+		lines = []string{
+			"I NEED TO FIX MY SHIP.",
+			fmt.Sprintf("%d PARTS STILL OUT THERE...", g.partsTotal-g.partsGot),
+		}
+	} else {
+		lines = []string{"THAT'S ALL OF THEM!", "TIME TO GO HOME."}
+	}
+
+	c := g.canvas
+	maxLen := 0
+	for _, s := range lines {
+		if len(s) > maxLen {
+			maxLen = len(s)
+		}
+	}
+	w := 2 + sprPortrait.W + 2 + maxLen + 2
+	const hRows = 8
+	x := (c.W - w) / 2
+	yRow := c.Rows() - hRows - 1
+
+	c.FillRect(x, yRow*2, w, hRows*2, 16)
+	c.Rect(x, yRow*2, w, hRows*2, 96)
+	c.Blit(sprPortrait, x+2, yRow*2+2)
+	for i, s := range lines {
+		g.text(x+2+sprPortrait.W+2, yRow+3+i, s, 250)
+	}
 }
 
 // panel draws a bordered dialog box with centred lines of cell text.

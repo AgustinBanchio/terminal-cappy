@@ -2,27 +2,21 @@ package game
 
 import (
 	"math"
-	"math/rand"
 
-	"cappy/internal/gfx"
+	"github.com/AgustinBanchio/terminal-cappy/internal/gfx"
 )
 
 // Background renders the multi-layer parallax space backdrop:
 // a banded sky, a hashed starfield, a cratered moon, and two silhouette
 // mountain ridges scrolling at different fractions of the camera speed.
+// The shapes are curated constants: same planet, same skyline.
 type Background struct {
-	p1, p2, p3, p4 float64 // ridge phase offsets, derived from the seed
+	p1, p2, p3, p4 float64 // ridge phase offsets
 	moonX          float64
 }
 
-func NewBackground(rng *rand.Rand) *Background {
-	return &Background{
-		p1:    rng.Float64() * 100,
-		p2:    rng.Float64() * 100,
-		p3:    rng.Float64() * 100,
-		p4:    rng.Float64() * 100,
-		moonX: 40 + rng.Float64()*30,
-	}
+func NewBackground() *Background {
+	return &Background{p1: 0.7, p2: 2.3, p3: 1.1, p4: 4.2, moonX: 58}
 }
 
 // skyBands runs top (deep space) to bottom (a faint purple horizon glow).

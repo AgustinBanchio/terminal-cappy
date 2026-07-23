@@ -1,4 +1,4 @@
-module cappy
+module github.com/AgustinBanchio/terminal-cappy
 
 go 1.26.5
 

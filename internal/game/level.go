@@ -1,9 +1,9 @@
 package game
 
 import (
-	"math/rand"
+	"math"
 
-	"cappy/internal/gfx"
+	"github.com/AgustinBanchio/terminal-cappy/internal/gfx"
 )
 
 // TilePx is the size of one collision tile in canvas pixels.
@@ -12,13 +12,13 @@ const TilePx = 4
 // chunkRows is the fixed tile height of the world.
 const chunkRows = 24
 
-// Spawn is an entity placement scanned out of the generated map.
+// Spawn is an entity placement scanned out of the map.
 type Spawn struct {
 	Kind rune // 'a' walker, 'f' flyer, 'P' ship part
 	X, Y float64
 }
 
-// Level is the generated world: a tile grid plus entity spawns.
+// Level is the world: a tile grid plus entity spawns.
 type Level struct {
 	W, H   int // in tiles
 	tiles  []bool
@@ -118,11 +118,114 @@ func (l *Level) Draw(c *gfx.Canvas, camX, camY int) {
 	}
 }
 
-// --- world generation -------------------------------------------------
+// --- decoration layers --------------------------------------------------
 
-// chunk is a hand-authored template, chunkRows tall. The contract for
-// middle chunks: columns 0-1 and w-2..w-1 have solid floor from row 20
-// down and open air above, so any chunk can neighbour any other.
+// Spike length patterns per pixel column within a tile, so stalactites
+// and stalagmites come out pointy instead of square.
+var spikeShape = [TilePx]int{-2, 0, -1, -3}
+
+// DrawBackdrop renders non-colliding world-space scenery behind the
+// gameplay layer: stalactites under ceilings, stalagmites and tall rock
+// pillars in caverns. Everything derives deterministically from the
+// tile geometry, so the art always matches the level.
+func (l *Level) DrawBackdrop(c *gfx.Canvas, camX, camY int) {
+	tx0 := fdiv(camX, TilePx) - 1
+	tx1 := fdiv(camX+c.W, TilePx) + 1
+	for tx := tx0; tx <= tx1; tx++ {
+		for ty := 0; ty < l.H; ty++ {
+			solid := l.SolidTile(tx, ty)
+
+			// Ceiling edge: maybe hang a stalactite cluster.
+			if solid && !l.SolidTile(tx, ty+1) {
+				h := hash2(tx, ty)
+				if h%3 != 0 {
+					l.drawSpikes(c, camX, camY, tx, (ty+1)*TilePx, 3+int(h%5), +1, 52)
+				}
+			}
+			// Floor edge: maybe a stalagmite, rarely a full pillar
+			// reaching a ceiling above (cavern support columns).
+			if !solid && l.SolidTile(tx, ty+1) {
+				h := hash2(tx, ty+7777)
+				if h%7 == 0 {
+					l.drawSpikes(c, camX, camY, tx, (ty+1)*TilePx-1, 2+int(h%4), -1, 52)
+				}
+				if h%29 == 0 {
+					if cy, ok := l.ceilingAbove(tx, ty); ok {
+						x := tx*TilePx + 1 - camX
+						y0 := (cy+1)*TilePx - camY
+						c.FillRect(x, y0, 2, (ty+1)*TilePx-(cy+1)*TilePx, 52)
+						c.FillRect(x-1, y0, 1, 2, 52) // flared top
+						c.FillRect(x+2, y0, 1, 2, 52)
+					}
+				}
+			}
+		}
+	}
+}
+
+// ceilingAbove finds a solid ceiling within pillar range above a floor.
+func (l *Level) ceilingAbove(tx, ty int) (int, bool) {
+	for cy := ty - 1; cy >= ty-12 && cy >= 0; cy-- {
+		if l.SolidTile(tx, cy) {
+			return cy, true
+		}
+	}
+	return 0, false
+}
+
+// drawSpikes draws one tile-column of pointy rock. dir +1 hangs down
+// from y0, dir -1 grows up from y0.
+func (l *Level) drawSpikes(c *gfx.Canvas, camX, camY, tx, y0, size, dir int, color uint8) {
+	for i := 0; i < TilePx; i++ {
+		length := size + spikeShape[(tx+i)%TilePx]
+		wx := tx*TilePx + i
+		for j := 0; j < length; j++ {
+			c.Set(wx-camX, y0+j*dir-camY, color)
+		}
+	}
+}
+
+// DrawForeground renders scenery in front of the player: sparse tufts
+// of alien grass swaying on every sunlit crust. The tufts are single
+// pixels wide with gaps, so Cappy stays visible walking through them.
+var grassColors = []uint8{29, 35, 41}
+
+func (l *Level) DrawForeground(c *gfx.Canvas, camX, camY int, t float64) {
+	for sx := 0; sx < c.W; sx++ {
+		wx := sx + camX
+		tx := fdiv(wx, TilePx)
+		h := hash2(wx, 0)
+		if h%5 < 2 {
+			continue // gap: this blade is missing, keeping it see-through
+		}
+		for ty := 0; ty < l.H; ty++ {
+			if !l.SolidTile(tx, ty) || l.SolidTile(tx, ty-1) {
+				continue
+			}
+			gh := hash2(wx, ty)
+			if gh%3 == 0 {
+				continue
+			}
+			blade := 2 + int(gh%3)
+			sway := int(math.Round(math.Sin(t*1.8 + float64(wx)*0.7)))
+			col := grassColors[gh%uint32(len(grassColors))]
+			top := ty*TilePx - blade
+			for y := top; y < ty*TilePx; y++ {
+				x := sx
+				if y == top {
+					x += sway // only the tip sways
+				}
+				c.Set(x, y-camY, col)
+			}
+		}
+	}
+}
+
+// --- world building -----------------------------------------------------
+
+// chunk is a hand-authored map segment, chunkRows tall. The contract:
+// columns 0-1 and w-2..w-1 have solid floor from row 20 down and open
+// air above, so segments join seamlessly.
 type chunk struct {
 	w    int
 	rows []string
@@ -161,50 +264,26 @@ func (c *chunk) setRange(r0, r1 int, s string) *chunk {
 	return c
 }
 
-func (c *chunk) mirrored() *chunk {
-	out := &chunk{w: c.w, rows: make([]string, chunkRows)}
-	for i, row := range c.rows {
-		b := []byte(row)
-		for l, r := 0, len(b)-1; l < r; l, r = l+1, r-1 {
-			b[l], b[r] = b[r], b[l]
-		}
-		out.rows[i] = string(b)
-	}
-	return out
-}
-
-// startChunk: the crash site. Flat and safe; the ship position and the
-// player spawn 'S' live here.
-func startChunk() *chunk {
-	return newChunk(20).
+// worldChunks returns the curated world, in order: a difficulty ramp
+// from the crash site through caverns and wall-jump climbs to the
+// hardest part high on the twin towers, then back on foot.
+func worldChunks() []*chunk {
+	start := newChunk(20).
 		set(18, "..............S.....")
-}
 
-// endChunk: a sheer cliff capping the far side of the world.
-func endChunk() *chunk {
-	return newChunk(12).
-		setRange(0, 19, ".........###").
-		set(12, "....f....###")
-}
-
-// middleChunks returns the pool of 16-wide templates. Four of them
-// carry a ship part 'P'; all are traversable in both directions with
-// run + jump + wall jump.
-func middleChunks() []*chunk {
 	meadow := newChunk(16).
 		set(18, "....##..........").
 		set(19, "...####....a....")
+
+	valley := newChunk(16).
+		set(16, "........f.......").
+		set(20, "####........####").
+		set(21, "#####......#####")
 
 	gap := newChunk(16).
 		set(14, "........f.......").
 		set(18, ".....##...##....").
 		setRange(20, 23, "####........####")
-
-	chimney := newChunk(16).
-		set(6, ".........##.....").
-		set(7, ".....P...##.....").
-		setRange(8, 16, ".....##..##.....").
-		setRange(17, 19, ".........##.....")
 
 	plateau := newChunk(16).
 		set(15, ".......a..a.....").
@@ -216,15 +295,21 @@ func middleChunks() []*chunk {
 		set(18, "........P.......").
 		set(19, "......a.........")
 
+	arch := newChunk(16).
+		setRange(10, 11, "...##########...").
+		setRange(12, 16, "...##......##...").
+		set(18, ".......a........")
+
+	chimney := newChunk(16).
+		set(6, ".........##.....").
+		set(7, ".....P...##.....").
+		setRange(8, 16, ".....##..##.....").
+		setRange(17, 19, ".........##.....")
+
 	pits := newChunk(16).
 		set(14, ".....f....f.....").
 		setRange(18, 19, ".......##.......").
 		setRange(20, 23, "####...##...####")
-
-	towers := newChunk(16).
-		setRange(4, 4, "............##..").
-		set(5, "........P...##..").
-		setRange(6, 16, "........##..##..")
 
 	ruins := newChunk(16).
 		set(14, "..........P.....").
@@ -233,28 +318,23 @@ func middleChunks() []*chunk {
 		set(18, "..##..##..##....").
 		set(19, "..##..##..##..a.")
 
-	return []*chunk{meadow, gap, chimney, plateau, cavern, pits, towers, ruins}
+	towers := newChunk(16).
+		set(4, "............##..").
+		set(5, "........P...##..").
+		setRange(6, 16, "........##..##..")
+
+	end := newChunk(12).
+		setRange(0, 19, ".........###").
+		set(12, "....f....###")
+
+	return []*chunk{start, meadow, valley, gap, plateau, cavern,
+		arch, chimney, pits, ruins, towers, end}
 }
 
-// Generate builds a world from a seed: crash site, all middle chunk
-// templates in a shuffled order (each possibly mirrored), and a cliff
-// at the end. Same seed, same planet.
-func Generate(seed int64) *Level {
-	rng := rand.New(rand.NewSource(seed))
-
-	middles := middleChunks()
-	rng.Shuffle(len(middles), func(i, j int) {
-		middles[i], middles[j] = middles[j], middles[i]
-	})
-	chunks := []*chunk{startChunk()}
-	for _, m := range middles {
-		if rng.Intn(2) == 0 {
-			m = m.mirrored()
-		}
-		chunks = append(chunks, m)
-	}
-	chunks = append(chunks, endChunk())
-
+// Build assembles the curated world. It is the same planet every run:
+// a metroidvania map, not a roguelike one.
+func Build() *Level {
+	chunks := worldChunks()
 	total := 0
 	for _, c := range chunks {
 		total += c.w
