@@ -145,6 +145,13 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 		}
 	}
 
+	// Variable jump height: releasing jump while rising cuts the ascent
+	// short. Only window mode has real release events; in the terminal
+	// this never fires and jumps stay fixed-height.
+	if g.in.consumeRelease(actJump) && p.VY < -30 {
+		p.VY *= 0.45
+	}
+
 	// Shooting. Holding X keeps firing via terminal auto-repeat.
 	if g.in.consume(actShoot) && p.shootCD <= 0 {
 		mx, my := p.muzzlePos()

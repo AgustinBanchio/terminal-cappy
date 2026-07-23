@@ -17,8 +17,18 @@ import (
 )
 
 func main() {
-	fps := flag.Int("fps", 60, "simulation and render rate")
+	fps := flag.Int("fps", 60, "terminal mode: simulation and render rate")
+	window := flag.Bool("window", false, "run in a desktop window instead of the terminal (needs a build with -tags window)")
+	scale := flag.Int("scale", 8, "window mode: size of one game pixel")
 	flag.Parse()
+
+	if *window {
+		if err := game.RunWindow(*scale); err != nil {
+			fmt.Fprintln(os.Stderr, "cappy:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *fps < 10 || *fps > 120 {
 		fmt.Fprintln(os.Stderr, "fps must be between 10 and 120")

@@ -32,7 +32,35 @@ go run github.com/AgustinBanchio/terminal-cappy@latest
 
 Flags:
 
-- `-fps N` simulation/render rate (default 60)
+- `-fps N` terminal mode: simulation/render rate (default 60)
+- `-window` run in a desktop window (see below)
+- `-scale N` window mode: size of one game pixel (default 8)
+
+## Window mode
+
+The terminal is the default, but a desktop window mode exists for the
+best possible controls: terminals never report key releases, while a
+window gets real press/release events. In window mode movement is
+frame-accurate (taps as short as you like, zero repeat-delay
+artifacts) and jumps have variable height: release Z early to cut the
+ascent, exactly like Hollow Knight.
+
+Window support (via [Ebitengine](https://ebitengine.org)) is behind a
+build tag so the default build stays pure Go:
+
+```sh
+go run -tags window . -window            # from a checkout
+go build -tags window -o cappy . && ./cappy -window
+```
+
+Build requirements per OS: Windows needs nothing extra (pure Go);
+macOS needs the Xcode Command Line Tools; Linux needs the X11/OpenGL
+dev packages (Debian/Ubuntu: `libgl1-mesa-dev xorg-dev libasound2-dev`).
+Running the plain terminal game never needs any of this.
+
+Rendering is identical to the terminal (each half-block pixel becomes
+a square), and resizing the window shows more of the world, like
+resizing a terminal.
 
 ## Controls
 

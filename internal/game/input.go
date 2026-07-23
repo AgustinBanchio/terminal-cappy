@@ -38,6 +38,13 @@ type input struct {
 	lastPress [actCount]time.Time
 
 	repeatDelay time.Duration
+
+	// Direct mode (window build): the renderer reports true key state
+	// every frame, so all the hold-window emulation above is bypassed,
+	// and real release events become available.
+	direct     bool
+	directHeld [actCount]bool
+	released   [actCount]bool
 }
 
 func newInput() input {
@@ -76,9 +83,33 @@ func (in *input) press(a action, now time.Time) {
 	}
 }
 
+// setDirect feeds real per-frame key state (window mode).
+func (in *input) setDirect(a action, held, justPressed, justReleased bool, now time.Time) {
+	in.direct = true
+	in.directHeld[a] = held
+	if justPressed {
+		in.pressed[a] = true
+		in.lastPress[a] = now
+	}
+	if justReleased {
+		in.released[a] = true
+	}
+}
+
 // held reports whether the action counts as held right now.
 func (in *input) held(a action, now time.Time) bool {
+	if in.direct {
+		return in.directHeld[a]
+	}
 	return now.Before(in.heldUntil[a])
+}
+
+// consumeRelease returns and clears the edge-triggered release state.
+// Only direct mode ever sets it: terminals have no release events.
+func (in *input) consumeRelease(a action) bool {
+	r := in.released[a]
+	in.released[a] = false
+	return r
 }
 
 // dir returns the horizontal input direction; when both directions are
@@ -110,6 +141,7 @@ func (in *input) consume(a action) bool {
 func (in *input) endFrame() {
 	for i := range in.pressed {
 		in.pressed[i] = false
+		in.released[i] = false
 	}
 }
 

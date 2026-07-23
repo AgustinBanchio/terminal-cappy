@@ -16,7 +16,7 @@ import (
 // Version is the fallback shown on the title screen for local builds.
 // Releases are tagged to match; module-installed builds (go run/install
 // @vX.Y.Z) display the exact version stamped by the toolchain instead.
-const Version = "v0.1.0"
+const Version = "v0.1.1"
 
 func displayVersion() string {
 	if bi, ok := debug.ReadBuildInfo(); ok &&
@@ -94,9 +94,18 @@ type Game struct {
 	texts []textCmd
 }
 
+// New builds a game rendering to a terminal screen.
 func New(screen tcell.Screen) *Game {
 	cols, rows := screen.Size()
-	g := &Game{screen: screen, canvas: gfx.NewCanvas(cols, rows)}
+	g := newGame(cols, rows)
+	g.screen = screen
+	return g
+}
+
+// newGame builds a game with no output backend; the window runner (and
+// tests) drive step/draw themselves and read the canvas.
+func newGame(cols, rows int) *Game {
+	g := &Game{canvas: gfx.NewCanvas(cols, rows)}
 	g.in = newInput()
 	g.reset()
 	g.state = StateTitle
@@ -244,12 +253,16 @@ func (g *Game) handleEvent(ev tcell.Event) (quit bool) {
 		}
 		// The title screen starts on any key that is not a quit key.
 		if g.state == StateTitle {
-			g.state = StatePlaying
-			g.in.endFrame()
-			g.sayf("FIND %d SHIP PARTS TO FIX YOUR SHIP", 4, g.partsTotal)
+			g.startFromTitle()
 		}
 	}
 	return false
+}
+
+func (g *Game) startFromTitle() {
+	g.state = StatePlaying
+	g.in.endFrame()
+	g.sayf("FIND %d SHIP PARTS TO FIX YOUR SHIP", 4, g.partsTotal)
 }
 
 func (g *Game) step(dt float64) {
@@ -549,6 +562,9 @@ func (g *Game) draw() {
 }
 
 func (g *Game) flush() {
+	if g.screen == nil {
+		return // window mode: the runner reads canvas + texts itself
+	}
 	g.canvas.Flush(g.screen)
 	for _, t := range g.texts {
 		for i, r := range t.msg {
