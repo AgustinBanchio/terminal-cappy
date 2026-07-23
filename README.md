@@ -124,7 +124,10 @@ Every map (generated or hand-edited) is checked by a traversal
 analyser (`AnalyzeTraversal`): it simulates simplified movement (jump
 height, air drift, unlimited falls, wall-jump chimneys up to 4 tiles
 wide) and fails the build if any part, boss or the ship is
-unreachable, or if any reachable spot has no way back. genmap runs it
+unreachable, or if any reachable spot has no way back. "Way back"
+means any route: one-way drops are fine, and encouraged, as long as
+exploring onward eventually leads out somewhere (the middle surface
+shaft and the west lava plunge are examples). genmap runs it
 at generation time and `TestEmbeddedLevelTraversal` runs it on every
 `go test`, so a hand edit that creates a stuck room fails CI. When it
 does, the debug harness in `debug_traversal_test.go` prints where the

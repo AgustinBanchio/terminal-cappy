@@ -165,10 +165,12 @@ func main() {
 	g.rect(g.solid, 56, 35, 59, 40, '.')
 	g.rect(g.solid, 150, 35, 153, 40, '.')
 	g.rect(g.solid, 236, 35, 239, 40, '.')
-	// Rubble mounds under every shaft and connector mouth: the tunnels
-	// are taller than a jump, so a 3-tile hop onto the mound puts the
-	// walls of the chimney above within wall-jump reach.
-	for _, m := range [][2]int{{97, 33}, {187, 33}, {263, 33}} {
+	// Rubble mounds under shaft and connector mouths: the tunnels are
+	// taller than a jump, so a 3-tile hop onto the mound puts the walls
+	// of the chimney above within wall-jump reach. The middle shaft
+	// (x186) deliberately gets no mound: it is a one-way drop, and you
+	// climb back out through the east or west chimney instead.
+	for _, m := range [][2]int{{97, 33}, {263, 33}} {
 		g.rect(g.solid, m[0], m[1], m[0]+1, 36, '#')
 	}
 	for _, m := range [][2]int{{57, 42}, {151, 42}, {237, 42}} {
@@ -222,12 +224,11 @@ func main() {
 	// --- lava region (south-west) --------------------------------------------
 	g.rect(g.zone, 0, 44, 142, H-1, 'l')
 	g.rect(g.solid, 12, 50, 136, 57, '.') // great burning cavern
-	g.rect(g.solid, 16, 42, 19, 50, '.')  // west way down
+	g.rect(g.solid, 16, 42, 19, 50, '.')  // west way down: one-way plunge
 	g.rect(g.solid, 84, 42, 87, 50, '.')  // east way down
-	// Ledge stairs up to each way out: the chimneys open in the cavern
-	// ceiling, so without steps the drop in would be one-way.
-	g.rect(g.solid, 24, 55, 26, 55, '#')
-	g.rect(g.solid, 18, 52, 20, 52, '#')
+	// Ledge stairs up to the east way out only. The west way is a
+	// deliberate one-way drop into the pocket; leaving it means finding
+	// the crawl corridor below.
 	g.rect(g.solid, 79, 55, 81, 55, '#')
 	g.rect(g.solid, 84, 52, 86, 52, '#')
 	// Magmaw's chamber inside the cavern
@@ -238,6 +239,15 @@ func main() {
 	g.rect(g.solid, 73, 54, 74, 57, 'd')
 	g.set(g.solid, 50, 55, 'M')
 	g.rect(g.solid, 46, 57, 51, 57, '~') // a molten puddle to hop
+	// The crawl corridor: a dark passage dug beneath Magmaw's chamber,
+	// the only way out of the west pocket. Drop through the hole in the
+	// pocket floor, cross under the boss, climb the chimney hole into
+	// the east cavern. The chamber floor above stays intact.
+	g.rect(g.solid, 22, 59, 79, 61, '.')
+	g.rect(g.solid, 22, 58, 25, 58, '.') // pocket floor opening (drop in)
+	g.rect(g.solid, 76, 58, 79, 58, '.') // east exit hole (climbable)
+	g.set(g.solid, 40, 61, 'a')
+	g.set(g.solid, 60, 61, 'a')
 	// pools outside, with easy jumps between islands
 	for _, p := range [][2]int{{88, 93}, {104, 109}, {122, 127}} {
 		g.rect(g.solid, p[0], 58, p[1], 59, '~')
