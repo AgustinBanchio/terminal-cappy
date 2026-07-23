@@ -37,7 +37,7 @@ const (
 	coyoteTime = 0.09
 	jumpBuffer = 0.10
 	shootEvery = 0.18
-	bulletVel  = 140.0
+	bulletVel  = 160.0
 	maxHP      = 5
 )
 

@@ -154,7 +154,7 @@ type Bullet struct {
 }
 
 func (g *Game) spawnBullet(x, y, vx float64) {
-	g.bullets = append(g.bullets, Bullet{X: x, Y: y, VX: vx, Life: 0.6})
+	g.bullets = append(g.bullets, Bullet{X: x, Y: y, VX: vx, Life: 1.1})
 }
 
 func (g *Game) updateBullets(dt float64) {
@@ -175,6 +175,14 @@ bullets:
 			for _, a := range g.aliens {
 				if a.HP > 0 && aabb(b.X-1, b.Y-1, 2, 2, a.X, a.Y, a.W, a.H) {
 					a.damage(g, 1, b.VX)
+					g.emitBurst(b.X, b.Y, 5, []uint8{226, 231, 208}, 35, 120)
+					continue bullets
+				}
+			}
+			for _, bs := range g.bosses {
+				if bs.Active && !bs.Dead &&
+					aabb(b.X-1, b.Y-1, 2, 2, bs.X, bs.Y, bs.info.w, bs.info.h) {
+					bs.damage(g, 1)
 					g.emitBurst(b.X, b.Y, 5, []uint8{226, 231, 208}, 35, 120)
 					continue bullets
 				}

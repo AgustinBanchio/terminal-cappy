@@ -115,6 +115,88 @@ var (
 		"..t.t.."))
 )
 
+// Boss: Dimi, warden of the ruins. A hulking spike-backed beast with
+// glowing eyes. 26x14.
+var dimiPal = map[rune]uint8{
+	'V': 54,  // hide, dark violet
+	'v': 53,  // hide shade / spikes
+	'B': 96,  // belly
+	'E': 196, // glowing eyes
+	'T': 231, // teeth
+	'm': 16,  // jaw shadow
+	'C': 246, // claws
+}
+
+var sprDimi = gfx.NewFrames(gfx.MustSprite(dimiPal,
+	".....v....v....v..........",
+	"....vVv..vVv..vVv.........",
+	"...vVVVvvVVVvvVVVv........",
+	"..vVVVVVVVVVVVVVVvv.......",
+	".vVVVVVVVVVVVVVVVVVvv.....",
+	".vVVVVVVVVVVVVVVVVVVVv....",
+	"vVVVVVVVVVVVVVVVEEVVVVv...",
+	"vVBBVVVVVVVVVVVVVVVVVVv...",
+	"vVBBVVVVVVVVVVVVTTTTTv....",
+	".vVVVVVVVVVVVVVVmmmmmv....",
+	".vVVVv..vVVVv..vVVVv......",
+	".vVVv...vVVv...vVVv.......",
+	".vVVv...vVVv...vVVv.......",
+	".CCC....CCC....CCC........"))
+
+// Boss: Prisma, the crystal queen. A floating faceted shard with a
+// glowing core and orbiting fragments. 18x14.
+var prismaPal = map[rune]uint8{
+	'C': 51,  // facet edge, bright cyan
+	'c': 38,  // facet shade
+	'P': 183, // body
+	'p': 97,  // body shade
+	'E': 201, // eyes
+	'W': 231, // crown shine
+}
+
+var sprPrisma = gfx.NewFrames(gfx.MustSprite(prismaPal,
+	"........cc........",
+	".......cCCc.......",
+	"......cCWWCc......",
+	".....cCPPPPCc.....",
+	"....cCPEPPEPCc....",
+	"...cCPPPPPPPPCc...",
+	"...cCPppppppPCc...",
+	"....cCPPPPPPCc....",
+	".....cCPPPPCc.....",
+	"......cCPPCc......",
+	".......cCCc.......",
+	"........cc........",
+	"..c.....c.....c...",
+	".c.......c......c."))
+
+// Boss: Magmaw, lord of the deep fire. A huge molten-cracked maw that
+// hops and spits lava. 22x14.
+var magmawPal = map[rune]uint8{
+	'K': 52,  // basalt hide
+	'k': 88,  // hide rim
+	'O': 202, // molten cracks
+	'E': 231, // eyes
+	'Y': 220, // mouth glow
+	'T': 254, // teeth
+}
+
+var sprMagmaw = gfx.NewFrames(gfx.MustSprite(magmawPal,
+	"......kkkkkkkkk.......",
+	"....kkKKKKKKKKKkk.....",
+	"...kKKEKKKKKKKEKKk....",
+	"..kKKKKKKKKKKKKKKKk...",
+	".kKKOKKKKKOKKKKOKKKk..",
+	".kKKKKKKKKKKKKKKKKKk..",
+	".kTYYYYYYYYYYYYYYYTk..",
+	".kYYYYYYYYYYYYYYYYYk..",
+	".kTYYYYYYYYYYYYYYYTk..",
+	".kKKKKKKKKKKKKKKKKKk..",
+	"..kKKOKKKKKOKKKKKKk...",
+	"..kKKKKKKKKKKKKKKKk...",
+	"...kkKKKKkkkKKKKkk....",
+	"...OO......OO........."))
+
 // Cappy's crashed ship: a red and white rocket lying on its side,
 // scorched near the engine. 28x12.
 var shipPal = map[rune]uint8{

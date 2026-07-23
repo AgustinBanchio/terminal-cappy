@@ -43,11 +43,24 @@ type Game struct {
 	cam    Camera
 
 	aliens    []*Alien
+	bosses    []*Boss
 	bullets   []Bullet
+	shots     []Shot
 	pickups   []*Pickup
 	particles []Particle
 
+	activeBoss *Boss
+	bossTitleT float64
+
 	partsGot, partsTotal int
+
+	// Weather (surface zone): rain comes and goes; lightning whites
+	// out the whole screen for a moment.
+	raining bool
+	rainT   float64
+	boltT   float64
+	flashT  float64
+	emberT  float64
 
 	time    float64
 	shake   float64
@@ -79,9 +92,13 @@ func (g *Game) reset() {
 	g.player = NewPlayer(g.level.SpawnX, g.level.SpawnY)
 
 	g.aliens = g.aliens[:0]
+	g.bosses = g.bosses[:0]
 	g.bullets = g.bullets[:0]
+	g.shots = g.shots[:0]
 	g.pickups = g.pickups[:0]
 	g.particles = g.particles[:0]
+	g.activeBoss = nil
+	g.bossTitleT = 0
 	g.partsGot = 0
 	g.partsTotal = 0
 	for _, s := range g.level.Spawns {
@@ -93,10 +110,14 @@ func (g *Game) reset() {
 		case 'P':
 			g.pickups = append(g.pickups, &Pickup{Kind: pickupPart, X: s.X, Y: s.Y})
 			g.partsTotal++
+		case 'D', 'Q', 'M':
+			g.bosses = append(g.bosses, newBoss(s.Kind, s.X, s.Y, g.level))
+			g.partsTotal++ // each boss guards a part
 		}
 	}
 
 	g.time, g.shake, g.lift, g.deadT = 0, 0, 0, 0
+	g.raining, g.rainT, g.boltT, g.flashT = false, 14, 0, 0
 	g.msg, g.msgT = "", 0
 	g.state = StatePlaying
 	g.cam.Center(g.player.X, g.player.Y,
@@ -235,7 +256,21 @@ func (g *Game) updateWorld(dt float64) {
 	}
 	g.aliens = alive
 
+	for _, b := range g.bosses {
+		b.update(g, dt)
+	}
+	g.bossTitleT = math.Max(0, g.bossTitleT-dt)
+
 	g.updateBullets(dt)
+	g.updateShots(dt)
+	g.updateWeather(dt)
+
+	// Lava burns: damage plus a hard bounce out of the pool.
+	p := g.player
+	if g.level.LavaAtPx(p.X+playerW/2, p.Y+playerH-1) {
+		p.Hurt(g, -float64(p.Facing))
+		p.VY = -140
+	}
 
 	kept := g.pickups[:0]
 	for _, pk := range g.pickups {
@@ -248,7 +283,6 @@ func (g *Game) updateWorld(dt float64) {
 	g.crashSmoke(dt)
 	g.updateParticles(dt)
 
-	p := g.player
 	g.cam.Update(p.X, p.Y, playerW, playerH,
 		float64(g.canvas.W), float64(g.canvas.H),
 		float64(g.level.PxW()), float64(g.level.PxH()), dt)
@@ -264,6 +298,71 @@ func (g *Game) updateWorld(dt float64) {
 			float64(g.level.ShipX-4), float64(g.level.ShipY-4), float64(sprShip.W+8), float64(sprShip.H+8)) {
 		g.state = StateWon
 		g.lift = 0
+	}
+}
+
+func (g *Game) playerZone() byte {
+	p := g.player
+	return g.level.Zone(fdiv(int(p.X+playerW/2), TilePx), fdiv(int(p.Y+playerH/2), TilePx))
+}
+
+// zoneColumns samples the ambience zone per screen column (at the
+// camera's vertical centre), which drives the parallax backdrop.
+func (g *Game) zoneColumns(camX, camY int) func(int) byte {
+	l := g.level
+	cy := fdiv(camY+g.canvas.H/2, TilePx)
+	return func(sx int) byte { return l.Zone(fdiv(sx+camX, TilePx), cy) }
+}
+
+// updateWeather runs the surface storm cycle and per-zone ambience.
+func (g *Game) updateWeather(dt float64) {
+	g.flashT = math.Max(0, g.flashT-dt)
+	g.rainT -= dt
+	if g.rainT <= 0 {
+		g.raining = !g.raining
+		if g.raining {
+			g.rainT = 12 + g.rng.Float64()*14
+			g.boltT = 3 + g.rng.Float64()*5
+		} else {
+			g.rainT = 10 + g.rng.Float64()*15
+		}
+	}
+	zone := g.playerZone()
+	if g.raining && zone == 's' {
+		g.boltT -= dt
+		if g.boltT <= 0 {
+			g.boltT = 4 + g.rng.Float64()*6
+			g.flashT = 0.13 // lightning: whole-screen white flash
+			g.shake = math.Max(g.shake, 1.5)
+		}
+	}
+
+	g.emberT -= dt
+	if g.emberT > 0 {
+		return
+	}
+	switch zone {
+	case 'l': // embers rise from the deep fire
+		g.emberT = 0.09
+		life := 1 + g.rng.Float64()
+		g.particles = append(g.particles, Particle{
+			X:    g.cam.X + g.rng.Float64()*float64(g.canvas.W),
+			Y:    g.cam.Y + float64(g.canvas.H) - g.rng.Float64()*8,
+			VX:   (g.rng.Float64() - 0.5) * 8,
+			VY:   -14 - g.rng.Float64()*14,
+			Life: life, Max: life, Grav: -4,
+			Colors: []uint8{208, 202, 130},
+		})
+	case 'k': // drifting glitter in the crystal caves
+		g.emberT = 0.28
+		life := 0.5 + g.rng.Float64()*0.5
+		g.particles = append(g.particles, Particle{
+			X:    g.cam.X + g.rng.Float64()*float64(g.canvas.W),
+			Y:    g.cam.Y + g.rng.Float64()*float64(g.canvas.H),
+			VY:   4,
+			Life: life, Max: life,
+			Colors: []uint8{231, 51, 183},
+		})
 	}
 }
 
@@ -330,9 +429,10 @@ func (g *Game) draw() {
 	}
 	camX, camY := int(g.cam.X)+sx, int(g.cam.Y)+sy
 
-	g.bg.Draw(c, camX, camY, g.time)
+	zone := g.zoneColumns(camX, camY)
+	g.bg.Draw(c, camX, camY, g.time, zone, g.raining)
 	g.level.DrawBackdrop(c, camX, camY, g.time)
-	g.level.Draw(c, camX, camY)
+	g.level.Draw(c, camX, camY, g.time)
 
 	c.Blit(sprShip, g.level.ShipX-camX, g.level.ShipY-g.liftOffset()-camY)
 
@@ -342,16 +442,28 @@ func (g *Game) draw() {
 	for _, a := range g.aliens {
 		a.draw(c, camX, camY)
 	}
+	for _, b := range g.bosses {
+		b.draw(c, camX, camY, g.time)
+	}
 	if g.state != StateDead && g.state != StateWon {
 		g.player.Draw(c, camX, camY)
 	}
 	for _, b := range g.bullets {
 		drawBullet(c, b, camX, camY)
 	}
+	for _, s := range g.shots {
+		drawShot(c, s, camX, camY)
+	}
 	for _, p := range g.particles {
 		drawParticle(c, p, camX, camY)
 	}
 	g.level.DrawForeground(c, camX, camY, g.time)
+	if g.raining {
+		g.drawRain(zone, camX, camY)
+	}
+	if g.flashT > 0.06 {
+		c.Clear(231) // lightning whiteout
+	}
 
 	switch g.state {
 	case StateTitle:
@@ -359,6 +471,7 @@ func (g *Game) draw() {
 	case StatePlaying:
 		g.drawDialogue()
 		g.drawHUD()
+		g.drawBossHUD()
 	case StatePaused:
 		g.drawHUD()
 		g.panel([]string{"PAUSED", "press P to resume"}, 220)
@@ -427,6 +540,50 @@ func (g *Game) drawHUD() {
 	g.text(c.W-len(parts)-1, 0, parts, 220)
 	if g.msgT > 0 {
 		g.textCentered(2, g.msg, 231)
+	}
+}
+
+// drawRain streaks world-locked rain down surface-zone columns, in
+// front of the scenery.
+func (g *Game) drawRain(zone func(int) byte, camX, camY int) {
+	c := g.canvas
+	ph := int(g.time * 130)
+	for sx := 0; sx < c.W; sx++ {
+		if zone(sx) != 's' {
+			continue
+		}
+		wx := sx + camX
+		for sy := 0; sy < c.H; sy++ {
+			wy := sy + camY + ph
+			if wy%12 < 5 && hash2(wx, fdiv(wy, 12))%17 == 0 {
+				c.Set(sx, sy, 67)
+			}
+		}
+	}
+}
+
+// drawBossHUD renders the boss health bar and, on fight start, the big
+// name card.
+func (g *Game) drawBossHUD() {
+	b := g.activeBoss
+	if b == nil || b.Dead {
+		return
+	}
+	c := g.canvas
+
+	w := c.W / 2
+	x := (c.W - w) / 2
+	c.FillRect(x-1, 7, w+2, 5, 16)
+	c.Rect(x-1, 7, w+2, 5, 88)
+	fill := int(float64(w) * float64(b.HP) / float64(b.info.hp))
+	c.FillRect(x, 8, fill, 3, 196)
+	g.textCentered(2, b.info.name, 210)
+
+	if g.bossTitleT > 0 {
+		scale := 2
+		tw := gfx.TextPxWidth(b.info.name, scale)
+		c.DrawTextPx((c.W-tw)/2, c.H/3, b.info.name, scale, 196, 52)
+		g.textCentered(c.Rows()/3+gfx.TextPxHeight(scale)/2+2, b.info.sub, 250)
 	}
 }
 

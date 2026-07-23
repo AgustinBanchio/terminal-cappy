@@ -1,10 +1,17 @@
 # Cappy Lost In Space (Retro Demo)
 
-A terminal metroidvania sidescroller. Cappy, a bipedal border collie in
-a red astronaut suit, crash-lands on an alien planet. Find the four
-ship parts scattered across a curated, hand-authored world, fend off
-the local aliens with your laser revolver, and get back to the ship to
-escape.
+A terminal metroidvania. Cappy, a bipedal border collie in a red
+astronaut suit, crash-lands in the middle of an alien world that opens
+in every direction: storm-lashed plains and ruins on the surface, a
+cave network below that branches into glittering crystal caverns and
+molten depths. Seven ship parts are scattered across the regions,
+three of them guarded by big room-locking bosses (Dimi, warden of the
+ruins; Prisma, the crystal queen; Magmaw, lord of the deep fire).
+Explore in any order, fight through the locals, fix the ship, escape.
+
+Each region has its own parallax backdrop, and the surface has a storm
+cycle: rain rolls in and out, and lightning whites out the whole
+screen for a beat.
 
 ## Running
 
@@ -72,13 +79,18 @@ timing.
 ## Level editor
 
 The world lives in `internal/game/level1.txt`, a plain-text file with
-three layers, embedded into the game binary at compile time:
+four layers, embedded into the game binary at compile time:
 
-- `@solid`: collision and entities (`#` rock, `S` spawn, `a` walker,
-  `f` flyer, `P` ship part, `H` ship anchor)
+- `@solid`: collision and entities. Terrain: `#` rock, `%` ruin brick,
+  `X` crystal rock, `~` lava (hazard), `d` boss door (solid only during
+  fights). Entities: `S` spawn, `H` ship, `a` walker, `f` flyer,
+  `P` ship part, `D`/`Q`/`M` bosses.
 - `@bg`: decoration behind gameplay (`t` stalactite, `m` stalagmite,
-  `I` pillar, `c` crystal)
+  `I` pillar, `c` crystal, `r` ruin column, `b` rubble)
 - `@fg`: decoration in front of gameplay (`g` grass)
+- `@zone`: ambience region per tile (`s` surface, `u` cave,
+  `k` crystal, `l` lava). This is how the parallax backdrop is edited:
+  each zone renders its own background and weather.
 
 Edit it with the bundled editor (run from the repo root):
 
@@ -88,7 +100,8 @@ go run ./cmd/leveled
 
 - Arrows or mouse click/drag: move the cursor and paint
 - Space/Enter: paint the selected tile; X/Backspace: erase
-- Tab or 1/2/3: switch the edited layer (solid/background/foreground)
+- F: flood-fill the region under the cursor (handy for zones)
+- Tab or 1/2/3/4: switch the edited layer (solid/bg/fg/zone)
 - V: toggle the full composite view (exactly what the game renders)
 - `[` `]`: cycle the tile palette for the current layer
 - Ctrl+S: save; Esc: quit (asks twice if unsaved)
@@ -96,6 +109,15 @@ go run ./cmd/leveled
 Decoration tiles keep their pixel shapes from a position hash, so
 hand-placed stalactites and grass still look organic rather than
 stamped. After saving, rebuild the game to embed the new level.
+
+Boss chambers are ordinary rooms: place a boss marker inside and `d`
+door tiles in the walls. The game finds the room bounds itself, seals
+the doors when Cappy steps in, shows the boss name card, and drops a
+ship part when the boss falls.
+
+`cmd/genmap` regenerates the whole map from the curated layout in
+code. It OVERWRITES hand edits in level1.txt, so it is only for
+restructuring the macro layout; day-to-day design lives in leveled.
 
 ## Architecture
 
@@ -109,8 +131,10 @@ stamped. After saving, rebuild the game to embed the new level.
   - `player.go`: the Hollow Knight-style movement controller, shooting
   - `entities.go`: aliens (patrolling walkers, drifting flyers),
     bullets, pickups, particles
-  - `background.go`: multi-layer parallax (sky, starfield, moon, two
-    mountain ridges)
+  - `boss.go`: boss fights (chamber detection, door locking, three AI
+    patterns, enemy projectiles)
+  - `background.go`: zone-themed parallax backdrops (storm surface,
+    caves, crystal caverns, lava depths)
   - `camera.go`: dead-zone follow camera clamped to the world
   - `input.go`: key-repeat bridging and calibration (see above)
   - `game.go`: state machine (title/playing/paused/dead/won), fixed

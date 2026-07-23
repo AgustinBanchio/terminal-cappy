@@ -181,8 +181,12 @@ func (ed *editor) handleEvent(ev tcell.Event) (quit bool) {
 				ed.layer = game.LayerBG
 			case '3':
 				ed.layer = game.LayerFG
-			case 'v', 'V', '4':
+			case '4':
+				ed.layer = game.LayerZone
+			case 'v', 'V', '5':
 				ed.composite = !ed.composite
+			case 'f', 'F':
+				ed.fill()
 			case '[':
 				ed.cycle(-1)
 			case ']':
@@ -212,6 +216,36 @@ func (ed *editor) cycle(d int) {
 func (ed *editor) paint(ch byte) {
 	if ed.lvl.SetCell(ed.layer, ed.curX, ed.curY, ch) {
 		ed.dirty = true
+	}
+}
+
+// fill flood-fills the connected region of identical tiles under the
+// cursor with the selected tile. Most useful for painting zones.
+func (ed *editor) fill() {
+	from := ed.lvl.Cell(ed.layer, ed.curX, ed.curY)
+	to := ed.selected()
+	if from == to {
+		return
+	}
+	queue := [][2]int{{ed.curX, ed.curY}}
+	n := 0
+	for len(queue) > 0 {
+		q := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		if ed.lvl.Cell(ed.layer, q[0], q[1]) != from {
+			continue
+		}
+		if !ed.lvl.SetCell(ed.layer, q[0], q[1], to) {
+			continue
+		}
+		n++
+		queue = append(queue,
+			[2]int{q[0] - 1, q[1]}, [2]int{q[0] + 1, q[1]},
+			[2]int{q[0], q[1] - 1}, [2]int{q[0], q[1] + 1})
+	}
+	if n > 0 {
+		ed.dirty = true
+		ed.say(fmt.Sprintf("filled %d tiles", n))
 	}
 }
 
@@ -245,9 +279,12 @@ func (ed *editor) draw() {
 
 	if ed.composite {
 		// Exactly the game's draw order.
-		ed.bg.Draw(c, ed.camX, ed.camY, ed.t)
+		zone := func(sx int) byte {
+			return ed.lvl.Zone((sx+ed.camX)/game.TilePx, (ed.camY+c.H/2)/game.TilePx)
+		}
+		ed.bg.Draw(c, ed.camX, ed.camY, ed.t, zone, false)
 		ed.lvl.DrawBackdrop(c, ed.camX, ed.camY, ed.t)
-		ed.lvl.Draw(c, ed.camX, ed.camY)
+		ed.lvl.Draw(c, ed.camX, ed.camY, ed.t)
 		ed.lvl.DrawMarkers(c, ed.camX, ed.camY)
 		ed.lvl.DrawForeground(c, ed.camX, ed.camY, ed.t)
 	} else {
@@ -255,14 +292,17 @@ func (ed *editor) draw() {
 		ed.drawGrid()
 		switch ed.layer {
 		case game.LayerSolid:
-			ed.lvl.Draw(c, ed.camX, ed.camY)
+			ed.lvl.Draw(c, ed.camX, ed.camY, ed.t)
 			ed.lvl.DrawMarkers(c, ed.camX, ed.camY)
 		case game.LayerBG:
-			ed.lvl.Draw(c, ed.camX, ed.camY)
+			ed.lvl.Draw(c, ed.camX, ed.camY, ed.t)
 			ed.lvl.DrawBackdrop(c, ed.camX, ed.camY, ed.t)
 		case game.LayerFG:
-			ed.lvl.Draw(c, ed.camX, ed.camY)
+			ed.lvl.Draw(c, ed.camX, ed.camY, ed.t)
 			ed.lvl.DrawForeground(c, ed.camX, ed.camY, ed.t)
+		case game.LayerZone:
+			ed.lvl.Draw(c, ed.camX, ed.camY, ed.t)
+			ed.drawZones()
 		}
 	}
 
@@ -312,6 +352,26 @@ func (ed *editor) drawGrid() {
 	}
 }
 
+// drawZones overlays the ambience zones as a see-through checkerboard
+// tint: green surface, grey cave, cyan crystal, orange lava.
+func (ed *editor) drawZones() {
+	c := ed.canvas
+	colors := map[byte]uint8{'s': 64, 'u': 245, 'k': 45, 'l': 202}
+	for sy := 0; sy < c.H; sy++ {
+		wy := sy + ed.camY
+		for sx := 0; sx < c.W; sx++ {
+			wx := sx + ed.camX
+			if (wx+wy)%2 != 0 {
+				continue
+			}
+			z := ed.lvl.Zone(wx/game.TilePx, wy/game.TilePx)
+			if col, ok := colors[z]; ok {
+				c.Set(sx, sy, col)
+			}
+		}
+	}
+}
+
 func (ed *editor) drawCursor() {
 	col := uint8(226)
 	if int(ed.t*3)%2 == 0 {
@@ -322,7 +382,7 @@ func (ed *editor) drawCursor() {
 }
 
 func (ed *editor) drawStatus() {
-	mode := "layer: " + [...]string{"solid", "background", "foreground"}[ed.layer]
+	mode := "layer: " + [...]string{"solid", "background", "foreground", "zone"}[ed.layer]
 	if ed.composite {
 		mode += " +full view"
 	}
@@ -347,7 +407,7 @@ func (ed *editor) drawStatus() {
 	}
 	ed.line(1, strip, 250)
 
-	help := " arrows/click move+paint  space paint  x erase  tab/123 layer  v full  [ ] tile  ctrl-s save  esc quit "
+	help := " arrows/click move+paint  space paint  x erase  f fill  tab/1234 layer  v full  [ ] tile  ctrl-s save  esc quit "
 	if ed.statusT > 0 {
 		help = " " + ed.status + " "
 	}
