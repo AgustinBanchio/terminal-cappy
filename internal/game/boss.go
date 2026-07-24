@@ -124,6 +124,7 @@ func (b *Boss) update(g *Game, dt float64) {
 			g.activeBoss = b
 			g.bossTitleT = 2.6
 			g.shake = math.Max(g.shake, 1.5)
+			g.play(SfxBossRoar)
 		}
 		return
 	}
@@ -318,6 +319,7 @@ func (b *Boss) damage(g *Game, dmg int) {
 	cx, cy := b.X+b.info.w/2, b.Y+b.info.h/2
 	g.emitBurst(cx, cy, 30, []uint8{231, 226, 196, 240}, 80, 120)
 	g.shake = 4
+	g.play(SfxExplosion)
 	g.pickups = append(g.pickups, &Pickup{Kind: pickupPart, Variant: g.nextPartVariant(), X: cx, Y: cy - 4})
 	g.sayf("%s DEFEATED! IT WAS GUARDING A SHIP PART", 4, b.info.name)
 }

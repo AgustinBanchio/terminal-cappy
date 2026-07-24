@@ -72,7 +72,9 @@ type Player struct {
 	shootCD float64
 	HurtCD  float64
 	muzzle  float64
+	landT   float64 // landing squash pose timer
 	anim    float64
+	idleT   float64
 }
 
 func NewPlayer(x, y float64) *Player {
@@ -126,6 +128,7 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 			p.airDashed = true
 		}
 		g.emitDust(p.X+playerW/2, p.Y+playerH/2, 3)
+		g.play(SfxDash)
 	}
 	if p.dashT > 0 {
 		p.VX = float64(p.dashDir) * dashSpeed
@@ -173,6 +176,7 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 			p.VY = jumpVel
 			p.jumpBuf, p.coyote, p.dashT = 0, 0, 0 // jump cancels a dash
 			g.emitDust(p.X+playerW/2, p.Y+playerH, 4)
+			g.play(SfxJump)
 		case p.wallDir != 0:
 			p.VY = wallJumpY
 			p.VX = float64(-p.wallDir) * wallJumpX
@@ -180,6 +184,7 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 			p.lock = wallJumpLock
 			p.jumpBuf, p.dashT = 0, 0
 			g.emitDust(p.X+playerW/2+float64(p.wallDir*3), p.Y+playerH/2, 4)
+			g.play(SfxJump)
 		}
 	}
 
@@ -196,6 +201,7 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 		g.spawnBullet(mx, my, float64(p.Facing)*bulletVel)
 		p.shootCD = shootEvery
 		p.muzzle = 0.07
+		g.play(SfxShoot)
 	}
 
 	p.moveX(l, dt)
@@ -209,7 +215,9 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 		p.coyote = coyoteTime
 		p.airDashed = false
 		if wasAirborne {
+			p.landT = 0.12
 			g.emitDust(p.X+playerW/2, p.Y+playerH, 3)
+			g.play(SfxLand)
 		}
 	}
 	if p.Sliding {
@@ -225,7 +233,13 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 	p.shootCD = math.Max(0, p.shootCD-dt)
 	p.HurtCD = math.Max(0, p.HurtCD-dt)
 	p.muzzle = math.Max(0, p.muzzle-dt)
+	p.landT = math.Max(0, p.landT-dt)
 	p.anim += dt
+	if p.OnGround && math.Abs(p.VX) <= 5 {
+		p.idleT += dt
+	} else {
+		p.idleT = 0
+	}
 }
 
 func (p *Player) moveX(l *Level, dt float64) {
@@ -276,6 +290,7 @@ func (p *Player) Hurt(g *Game, fromDir float64) {
 	p.VY = -60
 	p.lock = hurtLock
 	g.shake = 2
+	g.play(SfxHurt)
 	g.emitBurst(p.X+playerW/2, p.Y+playerH/2, 8, []uint8{160, 196, 255}, 50, 200)
 	if p.HP <= 0 {
 		g.kill("CAPPY'S SUIT GAVE OUT")
@@ -285,26 +300,33 @@ func (p *Player) Hurt(g *Game, fromDir float64) {
 func (p *Player) sprite() *gfx.Sprite {
 	var f gfx.Frames
 	switch {
+	case p.dashT > 0:
+		return sprCappyDash.Facing(p.dashDir)
 	case p.Sliding:
-		f = sprCappySlide
+		return sprCappySlide.Facing(-p.wallDir) // face away from the wall
 	case !p.OnGround && p.VY < 0:
 		f = sprCappyJump
-	case !p.OnGround:
-		f = sprCappyFall
-	case math.Abs(p.VX) > 5:
-		if int(p.anim*10)%2 == 0 {
-			f = sprCappyRun1
+	case !p.OnGround: // ears fluttering on the way down
+		if int(p.anim*8)%2 == 0 {
+			f = sprCappyFall1
 		} else {
-			f = sprCappyRun2
+			f = sprCappyFall2
 		}
-	default:
-		f = sprCappyIdle
+	case p.landT > 0:
+		f = sprCappySlide // landing squash, knees bent
+	case math.Abs(p.VX) > 5:
+		f = sprCappyRun[int(p.anim*12)%len(sprCappyRun)]
+	default: // idle: slow tail wag, ears settle, occasional blink
+		switch {
+		case math.Mod(p.idleT, 3.4) > 3.25:
+			f = sprCappyBlink
+		case int(p.idleT*1.6)%2 == 1:
+			f = sprCappyIdle2
+		default:
+			f = sprCappyIdle1
+		}
 	}
-	facing := p.Facing
-	if p.Sliding {
-		facing = -p.wallDir // face away from the wall
-	}
-	return f.Facing(facing)
+	return f.Facing(p.Facing)
 }
 
 // Draw renders Cappy (blinking while invulnerable) plus the muzzle flash.
@@ -312,8 +334,12 @@ func (p *Player) Draw(c *gfx.Canvas, camX, camY int) {
 	if p.HurtCD > 0 && int(p.HurtCD*12)%2 == 0 {
 		return
 	}
-	// The 10x12 sprite is centred on the 6x10 hitbox.
-	c.Blit(p.sprite(), int(p.X)-2-camX, int(p.Y)-2-camY)
+	// Sprites are centred on the hitbox and aligned at the feet, so the
+	// wide dash pose still stands on the ground.
+	spr := p.sprite()
+	x := int(p.X) + playerW/2 - spr.W/2
+	y := int(p.Y) + playerH - spr.H
+	c.Blit(spr, x-camX, y-camY)
 	if p.muzzle > 0 {
 		mx, my := p.muzzlePos()
 		c.Blit(sprMuzzle, int(mx)-1-camX, int(my)-1-camY)

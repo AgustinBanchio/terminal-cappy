@@ -153,33 +153,41 @@ func main() {
 	shaft(262, 30) // reaches the upper tunnel; go deeper via connectors
 
 	// --- cave tunnels --------------------------------------------------------
+	// A tile taller than they used to be, so the underground breathes.
 	for x := 14; x <= 300; x++ { // upper tunnel
-		floor := 35 + int(math.Round(math.Sin(float64(x)*0.15)))
+		floor := 36 + int(math.Round(math.Sin(float64(x)*0.15)))
 		g.rect(g.solid, x, 30, x, floor, '.')
 	}
 	for x := 14; x <= 292; x++ { // lower tunnel
-		floor := 44 + int(math.Round(math.Sin(float64(x)*0.11+2)))
+		floor := 45 + int(math.Round(math.Sin(float64(x)*0.11+2)))
 		g.rect(g.solid, x, 40, x, floor, '.')
 	}
 	// connectors between tunnels
 	g.rect(g.solid, 56, 35, 59, 40, '.')
 	g.rect(g.solid, 150, 35, 153, 40, '.')
 	g.rect(g.solid, 236, 35, 239, 40, '.')
-	// Climbing steps BESIDE each shaft and connector mouth, never under
-	// it: the fall channel stays fully clear (nothing to strand on),
-	// and to climb you hop from the step sideways into the chimney.
-	// The middle shaft (x186) deliberately gets no step: it is a
-	// one-way drop; climb back out through the east or west chimney.
-	for _, m := range [][2]int{{93, 33}, {259, 33}} {
-		g.rect(g.solid, m[0], m[1], m[0]+1, 36, '#')
+	// carved chambers, roomier than before. The west chamber keeps a
+	// floor at row 39 (the lower tunnel runs right below) and keeps its
+	// distance from the x56 connector so the chimney walls survive.
+	g.rect(g.solid, 62, 31, 84, 38, '.')
+	g.rect(g.solid, 150, 28, 174, 36, '.')
+	g.rect(g.solid, 220, 40, 242, 46, '.')
+	// Climbing stairs at each shaft and connector: low tiers on BOTH
+	// sides of the mouth plus a tall tier hugging the mouth's left
+	// column, so the stairs can be climbed AND crossed from either
+	// direction (the tall tier would otherwise wall the tunnel off).
+	// The fall channel (the other three tiles) stays clear. The middle
+	// shaft (x186) deliberately gets none: one-way drop.
+	for _, s := range []int{96, 262} {
+		g.rect(g.solid, s-3, 35, s-2, 38, '#') // west tier
+		g.rect(g.solid, s+5, 35, s+6, 38, '#') // east tier
+		g.rect(g.solid, s, 32, s, 38, '#')     // tall tier, in-mouth
 	}
-	for _, m := range [][2]int{{53, 42}, {147, 42}, {233, 42}} {
-		g.rect(g.solid, m[0], m[1], m[0]+1, 45, '#')
+	for _, c := range []int{56, 150, 236} {
+		g.rect(g.solid, c-3, 44, c-2, 47, '#')
+		g.rect(g.solid, c+5, 44, c+6, 47, '#')
+		g.rect(g.solid, c, 41, c, 47, '#')
 	}
-	// carved chambers
-	g.rect(g.solid, 62, 32, 80, 38, '.')
-	g.rect(g.solid, 152, 29, 170, 35, '.')
-	g.rect(g.solid, 222, 41, 238, 45, '.')
 
 	// --- crystal region (south-east) ----------------------------------------
 	// The grand cavern is terraced: broad 2-tile steps rise eastward
@@ -199,12 +207,16 @@ func main() {
 		}
 	}
 	for x := 200; x <= 269; x++ {
-		g.rect(g.solid, x, 48, x, terrace(x)-1, '.')
+		g.rect(g.solid, x, 46, x, terrace(x)-1, '.') // high vaulted ceiling
 	}
 	// remnant columns standing on the terraces (short: jump over them)
 	g.rect(g.solid, 218, 53, 219, 55, '#')
 	g.rect(g.solid, 236, 51, 237, 53, '#')
 	g.rect(g.solid, 246, 42, 249, 48, '.') // way in from the lower tunnel
+	// Climb back out: a step up from the western terrace, then a tall
+	// tier hugging the mouth's left column (fall channel x247-249).
+	g.rect(g.solid, 244, 51, 245, 53, '#')
+	g.rect(g.solid, 246, 49, 246, 53, '#')
 	// Prisma's chamber, entered at terrace level
 	g.rect(g.solid, 270, 40, 308, 41, '#') // ceiling
 	g.rect(g.solid, 270, 42, 271, 51, '#') // west wall
@@ -223,7 +235,7 @@ func main() {
 
 	// --- lava region (south-west) --------------------------------------------
 	g.rect(g.zone, 0, 44, 142, H-1, 'l')
-	g.rect(g.solid, 12, 50, 136, 57, '.') // great burning cavern
+	g.rect(g.solid, 12, 48, 136, 57, '.') // great burning cavern, high roof
 	g.rect(g.solid, 16, 42, 19, 50, '.')  // west way down: one-way plunge
 	g.rect(g.solid, 84, 42, 87, 50, '.')  // east way down
 	// Ledge stairs up to the east way out only, offset BESIDE the
@@ -232,11 +244,11 @@ func main() {
 	// the pocket; leaving it means finding the crawl corridor below.
 	g.rect(g.solid, 91, 55, 92, 55, '#')
 	g.rect(g.solid, 88, 52, 89, 52, '#')
-	// Magmaw's chamber inside the cavern
-	g.rect(g.solid, 28, 48, 74, 49, '#') // ceiling
-	g.rect(g.solid, 28, 50, 29, 57, '#') // west wall
-	g.rect(g.solid, 73, 50, 74, 57, '#') // east wall
-	g.rect(g.solid, 30, 50, 72, 57, '.') // interior
+	// Magmaw's chamber inside the cavern, taller than before
+	g.rect(g.solid, 28, 46, 74, 47, '#') // ceiling
+	g.rect(g.solid, 28, 48, 29, 57, '#') // west wall
+	g.rect(g.solid, 73, 48, 74, 57, '#') // east wall
+	g.rect(g.solid, 30, 48, 72, 57, '.') // interior
 	g.rect(g.solid, 73, 54, 74, 57, 'd')
 	g.set(g.solid, 50, 55, 'M')
 	g.rect(g.solid, 46, 57, 51, 57, '~') // a molten puddle to hop
@@ -258,7 +270,7 @@ func main() {
 	// Four parts are free pickups in far corners (the other three are
 	// boss drops); each free part gets explicit guards below.
 	g.set(g.solid, 305, 15, 'P') // eastern lookout
-	g.set(g.solid, 161, 31, 'P') // upper cave chamber
+	g.set(g.solid, 161, 33, 'P') // upper cave chamber
 	g.set(g.solid, 206, 56, 'P') // crystal cavern, deep end
 	g.set(g.solid, 115, 55, 'P') // lava island between pools
 	g.set(g.bg, 22, 54, 'c')     // the west lava pocket keeps a secret glow
@@ -267,7 +279,7 @@ func main() {
 	for y := 0; y < H-1; y++ {
 		for x := 0; x < W; x++ {
 			zone := g.get(g.zone, x, y)
-			// under-ceiling air
+			// under-ceiling air: stalactites, vines, crystal roofs
 			if g.solidAt(x, y) && !g.solidAt(x, y+1) && g.get(g.solid, x, y+1) == '.' {
 				h := hash2(x, y)
 				switch zone {
@@ -280,14 +292,23 @@ func main() {
 				case 's':
 					if h%4 == 0 {
 						g.set(g.bg, x, y+1, 't')
+					} else if h%9 == 1 {
+						g.set(g.bg, x, y+1, 'v')
 					}
-				default:
+				case 'u':
+					switch h % 5 {
+					case 0, 1, 4:
+						g.set(g.bg, x, y+1, 't')
+					case 2:
+						g.set(g.bg, x, y+1, 'v')
+					}
+				default: // lava
 					if h%3 != 0 {
 						g.set(g.bg, x, y+1, 't')
 					}
 				}
 			}
-			// above-floor air
+			// above-floor air: each region gets its own ground cover
 			if !g.solidAt(x, y) && g.solidAt(x, y+1) && g.get(g.solid, x, y) == '.' {
 				h := hash2(x, y+7777)
 				switch zone {
@@ -295,13 +316,21 @@ func main() {
 					if hash2(x, 12345)%4 != 0 {
 						g.set(g.fg, x, y, 'g')
 					}
-					if x < 124 && h%9 == 0 {
+					switch {
+					case x >= 118 && x <= 175 && h%6 == 0:
+						g.set(g.bg, x, y, 'w') // debris field around the crash
+					case x < 124 && h%9 == 0:
 						g.set(g.bg, x, y, 'b')
+					case h%11 == 0:
+						g.set(g.bg, x, y, 'n')
 					}
 				case 'u':
-					if h%6 == 0 {
+					switch {
+					case h%7 == 0:
+						g.set(g.bg, x, y, 'q')
+					case h%6 == 0:
 						g.set(g.bg, x, y, 'm')
-					} else if h%29 == 0 {
+					case h%29 == 0:
 						g.set(g.bg, x, y, 'c')
 					}
 				case 'k':

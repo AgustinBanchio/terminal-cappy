@@ -82,7 +82,7 @@ func TestDebugTraversal(t *testing.T) {
 		}
 	}
 	fmt.Println("underground row 34/55 fwd/bwd:")
-	for _, y := range []int{34, 44, 51, 55} {
+	for _, y := range []int{34, 38, 44, 51, 55} {
 		line = ""
 		for x := 0; x < l.W; x++ {
 			ch := "#"

@@ -70,6 +70,10 @@ var palettes = [LayerCount][]TileOption{
 		{'c', "crystal"},
 		{'r', "ruin column"},
 		{'b', "rubble"},
+		{'v', "vine"},
+		{'q', "glow mushrooms"},
+		{'n', "fern"},
+		{'w', "wreckage"},
 		{'.', "none"},
 	},
 	{
@@ -372,12 +376,15 @@ func (l *Level) colorAt(wx, wy int) (uint8, bool) {
 	ch := l.Cell(LayerSolid, tx, ty)
 	h := hash2(wx, wy)
 	switch ch {
-	case '%': // ruined brickwork with mortar lines
+	case '%': // ruined brickwork with mortar lines and creeping moss
 		if wy%TilePx == 0 {
 			return 58, true
 		}
 		if (wx+(wy/TilePx)*2)%6 == 0 {
 			return 58, true
+		}
+		if h%23 == 0 {
+			return 65, true // moss
 		}
 		if h%7 == 0 {
 			return 95, true
@@ -398,14 +405,28 @@ func (l *Level) colorAt(wx, wy int) (uint8, bool) {
 		default:
 			return 68, true
 		}
-	default: // '#' planet rock (also locked doors' backing, unseen)
+	default: // '#' planet rock, tinted by region
+		zone := l.Zone(tx, ty)
 		if !l.SolidTile(tx, ty-1) && wy-ty*TilePx == 0 {
-			return 179, true // sunlit crust
+			switch zone { // crust colour per region
+			case 'u':
+				return 137, true // damp cave earth
+			case 'l':
+				return 172, true // scorched
+			default:
+				return 179, true // sunlit
+			}
 		}
 		if !l.SolidTile(tx, ty+1) && wy-ty*TilePx == TilePx-1 {
 			return 52, true // dark underside of overhangs
 		}
-		switch {
+		switch { // rare regional flecks first
+		case zone == 'u' && h%31 == 0:
+			return 23, true // damp moss glow
+		case zone == 'l' && h%23 == 0:
+			return 166, true // ember veins
+		case zone == 's' && h%37 == 0:
+			return 101, true // sediment bands
 		case h%11 == 0:
 			return 131, true
 		case h%5 == 0:
@@ -503,6 +524,14 @@ func (l *Level) DrawBackdrop(c *gfx.Canvas, camX, camY int, t float64) {
 				drawRubble(c, camX, camY, tx, ty)
 			case 'c':
 				l.drawCrystal(c, camX, camY, tx, ty, t)
+			case 'v':
+				drawVine(c, camX, camY, tx, ty, t)
+			case 'q':
+				drawMushrooms(c, camX, camY, tx, ty, t)
+			case 'n':
+				drawFern(c, camX, camY, tx, ty, t)
+			case 'w':
+				drawWreckage(c, camX, camY, tx, ty)
 			}
 		}
 	}
@@ -549,6 +578,73 @@ func drawRubble(c *gfx.Canvas, camX, camY, tx, ty int) {
 	c.FillRect(x+1, y-2, 2, 1, 59)
 	if h%2 == 0 {
 		c.Set(x+int(h%4), y-3, 58)
+	}
+}
+
+// drawVine hangs two swaying strands with leaf buds from the tile top.
+func drawVine(c *gfx.Canvas, camX, camY, tx, ty int, t float64) {
+	h := hash2(tx, ty)
+	for s := 0; s < 2; s++ {
+		length := 5 + int((h>>uint(4*s))%5)
+		baseX := tx*TilePx + 1 + s*2
+		for j := 0; j < length; j++ {
+			sway := int(math.Round(math.Sin(t*1.2+float64(baseX)+float64(j)*0.6) * 0.9))
+			col := uint8(22)
+			if (j+int(h>>8))%3 == 0 {
+				col = 28 // leaf bud
+			}
+			c.Set(baseX+sway-camX, ty*TilePx+j-camY, col)
+		}
+	}
+}
+
+// drawMushrooms grows a cluster of glowing caps on the tile floor.
+func drawMushrooms(c *gfx.Canvas, camX, camY, tx, ty int, t float64) {
+	h := hash2(tx, ty)
+	base := (ty+1)*TilePx - 1
+	caps := []uint8{213, 183, 45}
+	for s := 0; s < 2+int(h%2); s++ {
+		x := tx*TilePx + int((h>>uint(3*s))%3) + s
+		tall := 1 + int((h>>uint(2*s))%2)
+		col := caps[(int(h>>uint(s))+s)%len(caps)]
+		c.Set(x-camX, base-camY, 187)
+		c.Set(x-camX, base-tall-camY, col)
+		c.Set(x-1-camX, base-tall-camY, col)
+		if (int(t*2)+s+int(h))%7 == 0 {
+			c.Set(x-camX, base-tall-camY, 231) // pulse
+		}
+	}
+}
+
+// drawFern draws an arcing frond on the tile floor.
+func drawFern(c *gfx.Canvas, camX, camY, tx, ty int, t float64) {
+	h := hash2(tx, ty)
+	base := (ty+1)*TilePx - 1
+	x := tx*TilePx + 1 + int(h%2)
+	dir := 1
+	if h%2 == 0 {
+		dir = -1
+	}
+	sway := int(math.Round(math.Sin(t*1.5+float64(tx)) * 0.8))
+	c.Set(x-camX, base-camY, 22)
+	c.Set(x-camX, base-1-camY, 28)
+	c.Set(x+sway-camX, base-2-camY, 34)
+	c.Set(x+dir+sway-camX, base-3-camY, 28)
+	c.Set(x+2*dir+sway-camX, base-3-camY, 22)
+}
+
+// drawWreckage scatters a bit of torn ship hull on the ground.
+func drawWreckage(c *gfx.Canvas, camX, camY, tx, ty int) {
+	h := hash2(tx, ty)
+	base := (ty+1)*TilePx - 1
+	x := tx*TilePx - camX
+	c.Set(x+1, base-camY, 240)
+	c.Set(x+2, base-camY, 245)
+	c.Set(x+2, base-1-camY, 245)
+	c.Set(x+3, base-1-camY, 160)
+	if h%2 == 0 {
+		c.Set(x, base-camY, 88)
+		c.Set(x+3, base-2-camY, 240)
 	}
 }
 
@@ -609,7 +705,7 @@ func (l *Level) DrawMarkers(c *gfx.Canvas, camX, camY int) {
 			x, y := tx*TilePx-camX, ty*TilePx-camY
 			switch l.grid[LayerSolid][ty*l.W+tx] {
 			case 'S':
-				c.Blit(sprCappyIdle.R, x-3, y-8)
+				c.Blit(sprCappyIdle1.R, x-3, y-8)
 			case 'a':
 				c.Blit(sprWalker1.R, x-2, y-1)
 			case 'f':

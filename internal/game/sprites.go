@@ -22,50 +22,82 @@ var cappyPal = map[rune]uint8{
 	'B': 59,  // boots
 }
 
-// cappyBody is rows 0-9 shared by every frame: helmet + head, torso and
-// the gun arm. Frames only differ in the two leg rows appended below.
-var cappyBody = []string{
-	"..GGGGG...",
-	".G*kk..G..",
-	".GkWWWEG..",
-	".GWWWWNG..",
-	".G.WWW.G..",
-	"..GGGGG...",
-	"..RRRR....",
-	".RRRRRggd.",
-	"WRRRRRr...",
-	"..ORRO....",
+// cappyBody builds rows 0-9 of a frame: helmet + head, torso and the
+// gun arm. The tail wags between two rows and the eye can blink, which
+// is what the idle/run animation variants are made of. Frames append
+// two leg rows below.
+func cappyBody(tailHigh, blink bool) []string {
+	eye := "E"
+	if blink {
+		eye = "k"
+	}
+	rows := []string{
+		"..GGGGG...",
+		".G*kk..G..",
+		".GkWWW" + eye + "G..",
+		".GWWWWNG..",
+		".G.WWW.G..",
+		"..GGGGG...",
+		"..RRRR....",
+		".RRRRRggd.",
+		".RRRRRr...",
+		"..ORRO....",
+	}
+	if tailHigh {
+		rows[7] = "WRRRRRggd."
+	} else {
+		rows[8] = "WRRRRRr..."
+	}
+	return rows
 }
 
-func cappyFrame(legs ...string) gfx.Frames {
-	rows := append(append([]string{}, cappyBody...), legs...)
+func cappyFrame(tailHigh, blink bool, legs ...string) gfx.Frames {
+	rows := append(cappyBody(tailHigh, blink), legs...)
 	return gfx.NewFrames(gfx.MustSprite(cappyPal, rows...))
 }
 
 var (
-	sprCappyIdle = cappyFrame(
-		"..R..R....",
-		"..B..B....")
-	sprCappyRun1 = cappyFrame(
-		".R....R...",
-		".B....B...")
-	sprCappyRun2 = cappyFrame(
-		"...RR.....",
-		"...BB.....")
-	sprCappyJump = cappyFrame(
-		"..R.R.....",
-		".B...B....")
-	sprCappyFall = cappyFrame(
-		"..R..R....",
-		".B....B...")
-	sprCappySlide = cappyFrame(
-		"..RR.R....",
-		"..BB.B....")
+	legsIdle   = []string{"..R..R....", "..B..B...."}
+	legsSpread = []string{".R....R...", ".B....B..."}
+	legsMid    = []string{"..R.R.....", ".B...B...."}
+	legsTuck   = []string{"...RR.....", "...BB....."}
+	legsBent   = []string{"..RR.R....", "..BB.B...."}
+
+	sprCappyIdle1 = cappyFrame(false, false, legsIdle...)
+	sprCappyIdle2 = cappyFrame(true, false, legsIdle...)
+	sprCappyBlink = cappyFrame(false, true, legsIdle...)
+
+	// 4-phase run cycle: spread, mid, together, mid, with the tail
+	// bouncing out of phase.
+	sprCappyRun = []gfx.Frames{
+		cappyFrame(true, false, legsSpread...),
+		cappyFrame(false, false, legsMid...),
+		cappyFrame(true, false, legsTuck...),
+		cappyFrame(false, false, legsMid...),
+	}
+
+	sprCappyJump  = cappyFrame(true, false, legsMid...)
+	sprCappyFall1 = cappyFrame(false, false, legsSpread...)
+	sprCappyFall2 = cappyFrame(true, false, legsSpread...)
+	sprCappySlide = cappyFrame(false, false, legsBent...)
 )
+
+// Dash pose: low, stretched, ears flat, trailing tail. 12x10.
+var sprCappyDash = gfx.NewFrames(gfx.MustSprite(cappyPal,
+	"...GGGG.....",
+	"..GkWWEG....",
+	"..GWWWNG....",
+	"...GGGG.....",
+	"..RRRRRR....",
+	"WRRRRRRRggd.",
+	"WRRRRRRRr...",
+	"..ORRRRO....",
+	"...R...R....",
+	"...B...B...."))
 
 // sprPortrait is Cappy's helmet-and-head, doubled in size, used as the
 // avatar in dialogue boxes.
-var sprPortrait = gfx.MustSprite(cappyPal, cappyBody[:6]...).Scale(2)
+var sprPortrait = gfx.MustSprite(cappyPal, cappyBody(false, false)[:6]...).Scale(2)
 
 // Walker alien: a grumpy green blob on stubby feet. 8x5.
 var walkerPal = map[rune]uint8{

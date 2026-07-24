@@ -285,6 +285,7 @@ func (a *Alien) damage(g *Game, dmg int, fromVX float64) {
 	}
 	g.emitBurst(a.X+a.W/2, a.Y+a.H/2, 14, colors, 55, 160)
 	g.shake = math.Max(g.shake, 1)
+	g.play(SfxKill)
 	if g.rng.Float64() < 0.25 {
 		g.pickups = append(g.pickups, &Pickup{Kind: pickupHeart, X: a.X + a.W/2, Y: a.Y})
 	}
@@ -437,6 +438,7 @@ func (pk *Pickup) update(g *Game, dt float64) bool {
 	switch pk.Kind {
 	case pickupPart:
 		g.partsGot++
+		g.play(SfxPart)
 		g.emitBurst(pk.X, pk.Y, 12, []uint8{220, 226, 231}, 45, 60)
 		if g.partsGot == g.partsTotal {
 			g.say("ALL PARTS FOUND! GET BACK TO THE SHIP", 4)
@@ -447,6 +449,7 @@ func (pk *Pickup) update(g *Game, dt float64) bool {
 		if p.HP < maxHP {
 			p.HP++
 		}
+		g.play(SfxHeart)
 		g.emitBurst(pk.X, pk.Y, 8, []uint8{196, 210}, 35, 60)
 	}
 	return false

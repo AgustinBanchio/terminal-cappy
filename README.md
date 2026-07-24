@@ -45,6 +45,11 @@ frame-accurate (taps as short as you like, zero repeat-delay
 artifacts) and jumps have variable height: release Z early to cut the
 ascent, exactly like Hollow Knight.
 
+Window mode also has sound: procedural chiptune effects (jumps, dash,
+laser, pickups, boss roars, thunder) synthesized at startup, no asset
+files. Terminals have no audio device, so the terminal game stays
+silent.
+
 Window support (via [Ebitengine](https://ebitengine.org)) is behind a
 build tag so the default build stays pure Go:
 
@@ -121,7 +126,8 @@ four layers, embedded into the game binary at compile time:
   fights). Entities: `S` spawn, `H` ship, `a` walker, `f` flyer, `b` bat, `u` lurker, `z` shardling, `e` magling,
   `P` ship part, `D`/`Q`/`M` bosses.
 - `@bg`: decoration behind gameplay (`t` stalactite, `m` stalagmite,
-  `I` pillar, `c` crystal, `r` ruin column, `b` rubble)
+  `I` pillar, `c` crystal, `r` ruin column, `b` rubble, `v` vine,
+  `q` glow mushrooms, `n` fern, `w` wreckage)
 - `@fg`: decoration in front of gameplay (`g` grass)
 - `@zone`: ambience region per tile (`s` surface, `u` cave,
   `k` crystal, `l` lava). This is how the parallax backdrop is edited:

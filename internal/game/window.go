@@ -36,6 +36,7 @@ func RunWindow(scale int) error {
 		face:  textv2.NewGoXFace(basicfont.Face7x13),
 	}
 	w.g.in.direct = true
+	w.g.audio = newSfxBank()
 	ebiten.SetWindowSize(100*scale, 30*2*scale)
 	ebiten.SetWindowTitle("Cappy Lost In Space")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)

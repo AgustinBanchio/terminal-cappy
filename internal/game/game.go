@@ -16,7 +16,7 @@ import (
 // Version is the fallback shown on the title screen for local builds.
 // Releases are tagged to match; module-installed builds (go run/install
 // @vX.Y.Z) display the exact version stamped by the toolchain instead.
-const Version = "v0.1.2"
+const Version = "v0.1.3"
 
 func displayVersion() string {
 	if bi, ok := debug.ReadBuildInfo(); ok &&
@@ -42,11 +42,37 @@ type textCmd struct {
 	fg   uint8
 }
 
+// Sfx identifies a sound effect. Terminals have no audio device, so
+// sounds only play in window mode, where the runner installs a
+// synthesizer as the game's AudioSink.
+type Sfx int
+
+const (
+	SfxJump Sfx = iota
+	SfxDash
+	SfxShoot
+	SfxLand
+	SfxHurt
+	SfxKill
+	SfxHeart
+	SfxPart
+	SfxBossRoar
+	SfxExplosion
+	SfxThunder
+	SfxCount
+)
+
+// AudioSink plays sound effects; nil means silent.
+type AudioSink interface {
+	Play(Sfx)
+}
+
 // Game owns the whole demo: world, entities, camera, and the tcell
 // screen it renders to.
 type Game struct {
 	screen tcell.Screen
 	canvas *gfx.Canvas
+	audio  AudioSink
 	in     input
 	rng    *rand.Rand
 	state  State
@@ -392,6 +418,7 @@ func (g *Game) updateWeather(dt float64) {
 			g.boltT = 4 + g.rng.Float64()*6
 			g.flashT = 0.13 // lightning: whole-screen white flash
 			g.shake = math.Max(g.shake, 1.5)
+			g.play(SfxThunder)
 		}
 	}
 
@@ -441,6 +468,7 @@ func (g *Game) kill(reason string) {
 	g.deadT = 0
 	g.deathBy = reason
 	g.shake = 3
+	g.play(SfxExplosion)
 	p := g.player
 	g.emitBurst(p.X+playerW/2, p.Y+playerH/2, 20, []uint8{255, 160, 152, 240}, 70, 120)
 }
@@ -448,6 +476,13 @@ func (g *Game) kill(reason string) {
 func (g *Game) liftOffset() int {
 	t := math.Max(0, g.lift-0.4)
 	return int(t * t * 14)
+}
+
+// play emits a sound effect if an audio backend is installed.
+func (g *Game) play(s Sfx) {
+	if g.audio != nil {
+		g.audio.Play(s)
+	}
 }
 
 // nextPartVariant deals out ship-part sprite shapes so every part in a
