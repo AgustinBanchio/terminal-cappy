@@ -83,6 +83,7 @@ func (w *windowRunner) Update() error {
 	bind(actRight, ebiten.KeyArrowRight, ebiten.KeyD)
 	bind(actJump, ebiten.KeyZ, ebiten.KeyW, ebiten.KeySpace, ebiten.KeyArrowUp)
 	bind(actShoot, ebiten.KeyX, ebiten.KeyK)
+	bind(actDash, ebiten.KeyC)
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyComma) {
 		g.nudge(-1)

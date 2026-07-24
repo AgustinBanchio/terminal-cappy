@@ -407,10 +407,11 @@ const (
 )
 
 type Pickup struct {
-	Kind pickupKind
-	X, Y float64 // centre
-	VY   float64
-	t    float64
+	Kind    pickupKind
+	Variant int     // which ship part sprite (parts only)
+	X, Y    float64 // centre
+	VY      float64
+	t       float64
 }
 
 func (pk *Pickup) update(g *Game, dt float64) bool {
@@ -455,7 +456,8 @@ func (pk *Pickup) draw(c *gfx.Canvas, camX, camY int) {
 	bob := int(math.Sin(pk.t*3) * 1.5)
 	switch pk.Kind {
 	case pickupPart:
-		c.Blit(sprPart, int(pk.X)-2-camX, int(pk.Y)-2+bob-camY)
+		spr := sprParts[pk.Variant%len(sprParts)]
+		c.Blit(spr, int(pk.X)-spr.W/2-camX, int(pk.Y)-spr.H/2+bob-camY)
 	case pickupHeart:
 		c.Blit(sprHeart, int(pk.X)-2-camX, int(pk.Y)-2+bob-camY)
 	}

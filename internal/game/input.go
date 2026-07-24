@@ -9,6 +9,7 @@ const (
 	actRight
 	actJump
 	actShoot
+	actDash
 	actCount
 )
 

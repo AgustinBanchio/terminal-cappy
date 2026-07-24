@@ -69,6 +69,9 @@ resizing a terminal.
   positioning; hold for a slow creep
 - Z (or W, Space, Up): jump
 - X (or K): shoot
+- C: dash in the facing direction; works in the air (once per
+  airtime, restored by landing or grabbing a wall), no falling while
+  dashing, short cooldown
 - Hold into a wall while airborne: wall slide; Z while sliding: wall jump
 - M or Tab: exploration map (only shows areas you have already seen)
 - P: pause
@@ -78,8 +81,8 @@ resizing a terminal.
 Movement is modelled on Hollow Knight's controller: instant locked run
 speed with no acceleration ramp, identical control on ground and in the
 air, asymmetric gravity (snappy falls), coyote time, jump buffering,
-and a brief control lock on wall jumps so the kick away from the wall
-lands.
+a gravity-suspending dash, and a brief control lock on wall jumps so
+the kick away from the wall lands.
 
 ## Portability
 

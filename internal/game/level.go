@@ -623,7 +623,7 @@ func (l *Level) DrawMarkers(c *gfx.Canvas, camX, camY int) {
 			case 'e':
 				c.Blit(sprMagling1.R, x-2, y-1)
 			case 'P':
-				c.Blit(sprPart, x, y)
+				c.Blit(sprParts[0], x, y)
 			case 'H':
 				c.Blit(sprShip, x, y+2)
 			case 'D':

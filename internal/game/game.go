@@ -16,7 +16,7 @@ import (
 // Version is the fallback shown on the title screen for local builds.
 // Releases are tagged to match; module-installed builds (go run/install
 // @vX.Y.Z) display the exact version stamped by the toolchain instead.
-const Version = "v0.1.1"
+const Version = "v0.1.2"
 
 func displayVersion() string {
 	if bi, ok := debug.ReadBuildInfo(); ok &&
@@ -72,6 +72,7 @@ type Game struct {
 	showMap bool
 
 	partsGot, partsTotal int
+	partSeq              int // next ship-part sprite variant to hand out
 
 	// Weather (surface zone): rain comes and goes; lightning whites
 	// out the whole screen for a moment.
@@ -129,6 +130,7 @@ func (g *Game) reset() {
 	g.bossTitleT = 0
 	g.partsGot = 0
 	g.partsTotal = 0
+	g.partSeq = 0
 	for _, s := range g.level.Spawns {
 		switch s.Kind {
 		case 'a':
@@ -144,7 +146,7 @@ func (g *Game) reset() {
 		case 'e':
 			g.aliens = append(g.aliens, newAlien(alienMagling, s.X, s.Y))
 		case 'P':
-			g.pickups = append(g.pickups, &Pickup{Kind: pickupPart, X: s.X, Y: s.Y})
+			g.pickups = append(g.pickups, &Pickup{Kind: pickupPart, Variant: g.nextPartVariant(), X: s.X, Y: s.Y})
 			g.partsTotal++
 		case 'D', 'Q', 'M':
 			g.bosses = append(g.bosses, newBoss(s.Kind, s.X, s.Y, g.level))
@@ -225,6 +227,8 @@ func (g *Game) handleEvent(ev tcell.Event) (quit bool) {
 				g.in.press(actJump, now)
 			case 'x', 'k':
 				g.in.press(actShoot, now)
+			case 'c':
+				g.in.press(actDash, now)
 			case 'a':
 				g.in.press(actLeft, now)
 			case 'd':
@@ -444,6 +448,14 @@ func (g *Game) kill(reason string) {
 func (g *Game) liftOffset() int {
 	t := math.Max(0, g.lift-0.4)
 	return int(t * t * 14)
+}
+
+// nextPartVariant deals out ship-part sprite shapes so every part in a
+// run looks like a different piece of the rocket.
+func (g *Game) nextPartVariant() int {
+	v := g.partSeq
+	g.partSeq++
+	return v
 }
 
 // nudge queues a 1px micro-step. Unlike held movement, each keypress
@@ -846,7 +858,7 @@ func (g *Game) drawTitle() {
 	if int(g.time*2)%2 == 0 {
 		g.textCentered(rows-5, "PRESS ANY KEY TO CONTINUE", 231)
 	}
-	g.textCentered(rows-3, "arrows/AD move  Z jump  X shoot  ,/. tiny step  M map", 245)
+	g.textCentered(rows-3, "arrows/AD move  Z jump  X shoot  C dash  ,/. step  M map", 245)
 	g.textCentered(rows-2, "hold into a wall to slide, Z to wall jump", 245)
 	g.text(1, rows-1, "retro demo "+displayVersion(), 240)
 	g.text(c.W-13, rows-1, "ESC to quit", 240)

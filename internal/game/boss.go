@@ -27,9 +27,9 @@ type bossInfo struct {
 }
 
 var bossInfos = map[rune]bossInfo{
-	'D': {bossDimi, "DIMI", "WARDEN OF THE RUINS", sprDimi, 24, 14, 30},
-	'Q': {bossPrisma, "PRISMA", "THE CRYSTAL QUEEN", sprPrisma, 16, 12, 24},
-	'M': {bossMagmaw, "MAGMAW", "LORD OF THE DEEP FIRE", sprMagmaw, 20, 13, 28},
+	'D': {bossDimi, "DIMI", "WARDEN OF THE RUINS", sprDimi, 24, 14, 18},
+	'Q': {bossPrisma, "PRISMA", "THE CRYSTAL QUEEN", sprPrisma, 16, 12, 14},
+	'M': {bossMagmaw, "MAGMAW", "LORD OF THE DEEP FIRE", sprMagmaw, 20, 13, 17},
 }
 
 type Boss struct {
@@ -318,7 +318,7 @@ func (b *Boss) damage(g *Game, dmg int) {
 	cx, cy := b.X+b.info.w/2, b.Y+b.info.h/2
 	g.emitBurst(cx, cy, 30, []uint8{231, 226, 196, 240}, 80, 120)
 	g.shake = 4
-	g.pickups = append(g.pickups, &Pickup{Kind: pickupPart, X: cx, Y: cy - 4})
+	g.pickups = append(g.pickups, &Pickup{Kind: pickupPart, Variant: g.nextPartVariant(), X: cx, Y: cy - 4})
 	g.sayf("%s DEFEATED! IT WAS GUARDING A SHIP PART", 4, b.info.name)
 }
 

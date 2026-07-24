@@ -316,15 +316,71 @@ var sprShip = gfx.MustSprite(shipPal,
 	"..................fRRs......",
 	"...................ff.......")
 
-// Ship part pickup: a glowing gear. 5x5.
-var partPal = map[rune]uint8{'Y': 220, 'y': 178, 'w': 231}
+// Ship part pickups: each of the seven parts is a different piece of
+// the rocket, so finding one tells you what you salvaged.
+var partsPal = map[rune]uint8{
+	'g': 246, // metal
+	'G': 252, // bright metal
+	'd': 240, // dark metal
+	'Y': 220, // brass
+	'y': 178, // brass shade
+	'w': 117, // glass
+	'W': 231, // shine
+	'c': 208, // copper
+	'C': 130, // copper shade
+	'e': 40,  // circuit traces
+	'E': 22,  // circuit board
+}
 
-var sprPart = gfx.MustSprite(partPal,
-	".y.y.",
-	"yYYYy",
-	".YwY.",
-	"yYYYy",
-	".y.y.")
+var sprParts = []*gfx.Sprite{
+	gfx.MustSprite(partsPal, // gear
+		".y.y.",
+		"yYYYy",
+		".YWY.",
+		"yYYYy",
+		".y.y."),
+	gfx.MustSprite(partsPal, // thruster nozzle
+		".gGGg.",
+		".dggd.",
+		".dggd.",
+		"dGggGd",
+		"dg..gd",
+		".c..c."),
+	gfx.MustSprite(partsPal, // fuel cell
+		".ggg.",
+		"gGGGg",
+		"gYYYg",
+		"gGGGg",
+		"gGGGg",
+		".ddd."),
+	gfx.MustSprite(partsPal, // antenna dish
+		"W.gg..",
+		".gGGg.",
+		"gGGGGg",
+		"..dd..",
+		"..dd..",
+		".dddd."),
+	gfx.MustSprite(partsPal, // copper coil
+		"cCCCc",
+		".ccc.",
+		"cCCCc",
+		".ccc.",
+		"cCCCc",
+		".ddd."),
+	gfx.MustSprite(partsPal, // circuit board
+		"y.yy.y",
+		"eEEEEe",
+		"eEWeEe",
+		"eEEEEe",
+		"y.yy.y"),
+	gfx.MustSprite(partsPal, // porthole window
+		".gggg.",
+		"gwwWwg",
+		"gwWwwg",
+		"gwwwwg",
+		"gwwwwg",
+		".gggg."),
+}
 
 // Heart pickup / HUD heart. 5x4.
 var heartPal = map[rune]uint8{'h': 196, 'H': 210}

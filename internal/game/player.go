@@ -39,6 +39,14 @@ const (
 	shootEvery = 0.18
 	bulletVel  = 160.0
 	maxHP      = 5
+
+	// Dash, Hollow Knight rules: a horizontal burst in the facing
+	// direction with gravity suspended, usable in the air (once per
+	// airtime, restored by landing or grabbing a wall), on a short
+	// cooldown.
+	dashSpeed    = 130.0
+	dashTime     = 0.18
+	dashCooldown = 0.55
 )
 
 type Player struct {
@@ -52,6 +60,11 @@ type Player struct {
 	wallDir  int // -1 wall on the left, 1 wall on the right
 
 	NudgeX int // queued 1px micro-steps from the precision keys
+
+	dashT     float64 // remaining dash time
+	dashCD    float64
+	dashDir   int
+	airDashed bool // air dash spent; restored on landing / wall grab
 
 	lock    float64 // horizontal control lock (wall jump, knockback)
 	coyote  float64
@@ -99,6 +112,29 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 		p.NudgeX = 0
 	}
 
+	// Dash: starts in the facing direction; grounded dashes are always
+	// available (off cooldown), airborne ones once per airtime.
+	if g.in.consume(actDash) && p.dashCD <= 0 && p.dashT <= 0 &&
+		(p.OnGround || p.Sliding || !p.airDashed) {
+		p.dashT = dashTime
+		p.dashCD = dashCooldown
+		p.dashDir = p.Facing
+		if p.Sliding {
+			p.dashDir = -p.wallDir // dash away from the wall
+		}
+		if !p.OnGround {
+			p.airDashed = true
+		}
+		g.emitDust(p.X+playerW/2, p.Y+playerH/2, 3)
+	}
+	if p.dashT > 0 {
+		p.VX = float64(p.dashDir) * dashSpeed
+		p.VY = 0
+		p.Facing = p.dashDir
+		// Afterimage trail.
+		g.emitBurst(p.X+playerW/2, p.Y+playerH/2, 1, []uint8{195, 117, 111}, 8, 0)
+	}
+
 	// Wall contact probes (a sliver just outside each side of the hitbox).
 	touchL := l.SolidBox(p.X-0.6, p.Y+1, 0.5, playerH-2)
 	touchR := l.SolidBox(p.X+playerW+0.1, p.Y+1, 0.5, playerH-2)
@@ -113,16 +149,18 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 	p.Sliding = !p.OnGround && p.VY > 0 &&
 		((touchL && dir < 0) || (touchR && dir > 0))
 
-	// Asymmetric gravity.
-	grav := riseGrav
-	if p.VY >= 0 {
-		grav = fallGrav
-	}
-	p.VY += grav * dt
-	if p.Sliding {
-		p.VY = math.Min(p.VY, slideFall)
-	} else {
-		p.VY = math.Min(p.VY, maxFall)
+	// Asymmetric gravity, suspended entirely while dashing.
+	if p.dashT <= 0 {
+		grav := riseGrav
+		if p.VY >= 0 {
+			grav = fallGrav
+		}
+		p.VY += grav * dt
+		if p.Sliding {
+			p.VY = math.Min(p.VY, slideFall)
+		} else {
+			p.VY = math.Min(p.VY, maxFall)
+		}
 	}
 
 	// Jumping: buffered presses, coyote time, and wall jumps.
@@ -133,14 +171,14 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 		switch {
 		case p.OnGround || p.coyote > 0:
 			p.VY = jumpVel
-			p.jumpBuf, p.coyote = 0, 0
+			p.jumpBuf, p.coyote, p.dashT = 0, 0, 0 // jump cancels a dash
 			g.emitDust(p.X+playerW/2, p.Y+playerH, 4)
 		case p.wallDir != 0:
 			p.VY = wallJumpY
 			p.VX = float64(-p.wallDir) * wallJumpX
 			p.Facing = -p.wallDir
 			p.lock = wallJumpLock
-			p.jumpBuf = 0
+			p.jumpBuf, p.dashT = 0, 0
 			g.emitDust(p.X+playerW/2+float64(p.wallDir*3), p.Y+playerH/2, 4)
 		}
 	}
@@ -161,19 +199,26 @@ func (p *Player) Update(g *Game, dt float64, now time.Time) {
 	}
 
 	p.moveX(l, dt)
+	if p.dashT > 0 && p.VX == 0 {
+		p.dashT = 0 // dashed into a wall
+	}
 	wasAirborne := !p.OnGround
 	p.moveY(l, dt)
 	p.OnGround = p.VY >= 0 && l.SolidBox(p.X, p.Y+playerH+0.05, playerW, 0.1)
 	if p.OnGround {
 		p.coyote = coyoteTime
+		p.airDashed = false
 		if wasAirborne {
 			g.emitDust(p.X+playerW/2, p.Y+playerH, 3)
 		}
 	}
 	if p.Sliding {
+		p.airDashed = false
 		g.emitDust(p.X+playerW/2+float64(p.wallDir*3), p.Y+playerH, 1)
 	}
 
+	p.dashT = math.Max(0, p.dashT-dt)
+	p.dashCD = math.Max(0, p.dashCD-dt)
 	p.lock = math.Max(0, p.lock-dt)
 	p.coyote = math.Max(0, p.coyote-dt)
 	p.jumpBuf = math.Max(0, p.jumpBuf-dt)
